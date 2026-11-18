@@ -1,0 +1,163 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { buildRaw, toMeta, toFull, encodeHeaderText } from '../src/core/mime.mjs';
+import { AccountSync } from '../src/main/sync.mjs';
+import { Gmail, GmailError } from '../src/main/gmail.mjs';
+
+const b64u = (s) => Buffer.from(s).toString('base64url');
+
+test('buildRaw: plain reply with threading headers', () => {
+  const raw = buildRaw({ from: { name: 'Alex', addr: 'a@x.com' }, to: 'Bob <b@y.com>', cc: 'c@z.com', bcc: 'd@z.com', subject: 'Re: Hi', text: 'Hello\nthere', inReplyTo: '<1@y>', references: '<0@y> <1@y>' });
+  const [head, body] = raw.split('\r\n\r\n');
+  assert.match(head, /^From: Alex <a@x\.com>\r\nTo: Bob <b@y\.com>\r\nCc: c@z\.com\r\nBcc: d@z\.com\r\nSubject: Re: Hi\r\n/);
+  assert.match(head, /In-Reply-To: <1@y>/);
+  assert.match(head, /References: <0@y>\r\n <1@y>/);
+  assert.match(head, /Content-Type: text\/plain; charset="UTF-8"/);
+  assert.equal(Buffer.from(body, 'base64').toString(), 'Hello\r\nthere');
+  assert.throws(() => buildRaw({ from: { addr: 'a@x.com' }, to: '', subject: 's', text: '' }), /No recipients/);
+});
+
+test('buildRaw: unicode headers and attachments', () => {
+  const raw = buildRaw({ from: { name: 'Zoë', addr: 'z@x.com' }, to: [{ name: '', addr: 'b@y.com' }], subject: 'Grüße — 日本語のテスト、長い件名でも正しく折り返されること', text: 'x', attachments: [{ filename: 'résumé.pdf', mime: 'application/pdf', data: Buffer.alloc(200, 7) }] });
+  assert.ok(/^[\x00-\x7f]*$/.test(raw), 'message is 7-bit clean');
+  assert.match(raw, /From: =\?UTF-8\?B\?[\w+/=]+\?= <z@x\.com>/);
+  const boundary = raw.match(/boundary="([^"]+)"/)[1];
+  const parts = raw.split(`--${boundary}`);
+  assert.equal(parts.length, 4);
+  assert.match(parts[2], /filename\*=UTF-8''r%C3%A9sum%C3%A9\.pdf/);
+  assert.deepEqual(Buffer.from(parts[2].split('\r\n\r\n')[1].replace(/\s/g, ''), 'base64'), Buffer.alloc(200, 7));
+  for (const line of raw.split('\r\n')) assert.ok(line.length <= 78, `line too long: ${line.length}`);
+  // encoded-words decode back losslessly
+  const subj = 'Grüße — 日本語のテスト、長い件名でも正しく折り返されること';
+  const decoded = encodeHeaderText(subj).split(/\r\n /).map((w) => Buffer.from(w.slice(10, -2), 'base64').toString()).join('');
+  assert.equal(decoded, subj);
+});
+
+const gmsg = (id, { from = 'Bot <bot@svc.com>', subject = 'Hi', labels = ['INBOX'], extra = [] } = {}) => ({
+  id, threadId: `t${id}`, internalDate: '1700000000000', labelIds: labels, snippet: 'a &amp; b &#39;c&#39;',
+  payload: { headers: [{ name: 'From', value: from }, { name: 'To', value: 'Me <me@x.com>, "Roe, R" <r@y.com>' }, { name: 'Cc', value: 'c@z.com' }, { name: 'Subject', value: subject }, ...extra] },
+});
+
+test('toMeta maps Gmail metadata and skips drafts/spam', () => {
+  const m = toMeta('me@x.com', gmsg('1', { labels: ['SENT'], extra: [{ name: 'List-Unsubscribe', value: '<mailto:u@x>' }] }));
+  assert.deepEqual({ key: m.key, from: m.from, to: m.to, sent: m.sent, bulk: m.bulk, snippet: m.snippet, ts: m.ts },
+    { key: 'me@x.com:1', from: { name: 'Bot', addr: 'bot@svc.com' }, to: ['me@x.com', 'r@y.com', 'c@z.com'], sent: true, bulk: true, snippet: "a & b 'c'", ts: 1700000000000 });
+  assert.equal(toMeta('me@x.com', gmsg('2', { labels: ['DRAFT'] })), null);
+  assert.equal(toMeta('me@x.com', gmsg('3', { labels: ['SPAM'] })), null);
+});
+
+test('toFull extracts bodies, attachments and inline images', () => {
+  const full = toFull({
+    id: '1', threadId: 't', internalDate: '5',
+    payload: { mimeType: 'multipart/mixed', headers: [{ name: 'Message-ID', value: '<m@x>' }, { name: 'Reply-To', value: 'r@x.com' }], parts: [
+      { mimeType: 'multipart/alternative', parts: [
+        { mimeType: 'text/plain', body: { data: b64u('plain ü') } },
+        { mimeType: 'multipart/related', parts: [
+          { mimeType: 'text/html', body: { data: b64u('<p>html <img src="cid:logo1"></p>') } },
+          { mimeType: 'image/png', filename: 'logo.png', headers: [{ name: 'Content-ID', value: '<logo1>' }], body: { attachmentId: 'A1', size: 10 } },
+        ] },
+      ] },
+      { mimeType: 'application/pdf', filename: 'doc.pdf', headers: [{ name: 'Content-Disposition', value: 'attachment; filename="doc.pdf"' }], body: { attachmentId: 'A2', size: 99 } },
+    ] },
+  });
+  assert.equal(full.text, 'plain ü');
+  assert.match(full.html, /cid:logo1/);
+  assert.deepEqual(full.attachments.map((a) => [a.filename, a.attId, a.size]), [['doc.pdf', 'A2', 99]]);
+  assert.deepEqual(full.inline.map((a) => [a.cid, a.attId]), [['logo1', 'A1']]);
+  assert.equal(full.headers.messageId, '<m@x>');
+  assert.equal(full.headers.replyTo, 'r@x.com');
+});
+
+function fakeGmail(mailbox) {
+  const calls = [];
+  return {
+    calls,
+    profile: async () => ({ historyId: String(mailbox.historyId) }),
+    async *listIds(q) { calls.push(q); for (const id of mailbox.list(q)) yield id; },
+    getMeta: async (id) => { if (!mailbox.msgs[id]) throw new GmailError(404, 'gone'); return mailbox.msgs[id]; },
+    history: async (start) => mailbox.history(start),
+  };
+}
+
+test('sync: backfill, incremental add/remove, and expired history recovery', async () => {
+  const mailbox = {
+    historyId: 100,
+    msgs: { a: gmsg('a'), b: gmsg('b', { labels: ['SENT'] }), c: gmsg('c') },
+    list: (q) => (q.startsWith('in:sent') ? ['b'] : ['a', 'b', 'c', 'gone']),
+    history: () => ({ added: new Set(), removed: new Set(), historyId: '100' }),
+  };
+  const events = [];
+  let saves = 0;
+  const gmail = fakeGmail(mailbox);
+  const sync = new AccountSync({ email: 'me@x.com', gmail, saved: null, save: () => saves++, emit: (e) => events.push(e), syncMonths: () => 12 });
+  await sync.tick();
+  assert.equal(sync.backfillDone, true);
+  assert.deepEqual([...sync.messages.keys()].sort(), ['a', 'b', 'c']);
+  assert.match(gmail.calls[0], /^newer_than:30d/);
+  assert.match(gmail.calls[2], /^after:\d{4}\/\d+\/\d+ -in:drafts -in:chats$/);
+  assert.ok(saves > 0);
+  assert.equal(events.filter((e) => e.type === 'error').length, 0);
+
+  // incremental: one new, one deleted
+  mailbox.msgs.d = gmsg('d');
+  mailbox.history = () => ({ added: new Set(['d']), removed: new Set(['a']), historyId: '120' });
+  events.length = 0;
+  await sync.tick();
+  assert.deepEqual([...sync.messages.keys()].sort(), ['b', 'c', 'd']);
+  assert.equal(sync.historyId, '120');
+  assert.deepEqual(events.find((e) => e.removed?.length).removed, ['me@x.com:a']);
+  assert.ok(events.find((e) => e.live && e.added[0]?.id === 'd'));
+
+  // resume from snapshot
+  const resumed = new AccountSync({ email: 'me@x.com', gmail, saved: JSON.parse(JSON.stringify(sync.snapshot())), save() {}, emit() {}, syncMonths: () => 12 });
+  assert.equal(resumed.backfillDone, true);
+  assert.equal(resumed.messages.size, 3);
+
+  // history too old -> re-anchor and rescan
+  mailbox.history = () => { throw new GmailError(404, 'too old'); };
+  mailbox.historyId = 500;
+  mailbox.msgs.e = gmsg('e');
+  mailbox.list = () => ['e', 'd'];
+  await sync.tick();
+  assert.equal(sync.historyId, '500');
+  assert.ok(sync.messages.has('e'));
+
+  // auth failure is reported, not thrown
+  mailbox.history = () => { const e = new Error('expired'); e.code = 'invalid_grant'; throw e; };
+  events.length = 0;
+  await sync.tick();
+  assert.equal(events.find((e) => e.type === 'error').auth, true);
+});
+
+test('Gmail client: retries rate limits, pages lists, picks send transport by size', async () => {
+  const seen = [];
+  let fail = 2;
+  const fetchImpl = async (url, init) => {
+    seen.push({ url: String(url), init });
+    if (fail-- > 0) return new Response(JSON.stringify({ error: { message: 'slow down', errors: [{ reason: 'rateLimitExceeded' }] } }), { status: 429 });
+    const u = new URL(url);
+    if (u.pathname.endsWith('/messages') && !u.searchParams.get('pageToken')) return Response.json({ messages: [{ id: '1' }, { id: '2' }], nextPageToken: 'p2' });
+    if (u.pathname.endsWith('/messages')) return Response.json({ messages: [{ id: '3' }] });
+    return Response.json({ id: 'sent1', threadId: 'T' });
+  };
+  const g = new Gmail(async () => 'tok', fetchImpl);
+  const realTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn) => realTimeout(fn, 0); // skip backoff waits
+  try {
+    const ids = [];
+    for await (const id of g.listIds('in:sent')) ids.push(id);
+    assert.deepEqual(ids, ['1', '2', '3']);
+    assert.equal(seen[0].init.headers.Authorization, 'Bearer tok');
+
+    seen.length = 0;
+    await g.send('From: a\r\n\r\nhi', 'T');
+    assert.match(seen[0].url, /\/gmail\/v1\/users\/me\/messages\/send$/);
+    assert.deepEqual(JSON.parse(seen[0].init.body), { raw: Buffer.from('From: a\r\n\r\nhi').toString('base64url'), threadId: 'T' });
+
+    seen.length = 0;
+    await g.send(`From: a\r\n\r\n${'x'.repeat(4 * 1024 * 1024)}`, 'T');
+    assert.match(seen[0].url, /\/upload\/gmail\/v1\/users\/me\/messages\/send\?uploadType=multipart$/);
+    assert.match(seen[0].init.headers['Content-Type'], /^multipart\/related; boundary=/);
+    assert.ok(seen[0].init.body.includes('{"threadId":"T"}'));
+  } finally { globalThis.setTimeout = realTimeout; }
+});

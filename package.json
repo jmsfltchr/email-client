@@ -1,0 +1,40 @@
+{
+  "name": "stillmail",
+  "productName": "Stillmail",
+  "version": "0.1.0",
+  "description": "A calm desktop Gmail client: people first, notifications by topic, no unread counts.",
+  "main": "src/main/main.mjs",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "demo": "electron . --demo",
+    "test": "node --test",
+    "e2e": "node scripts/e2e.cjs",
+    "dist": "npx electron-builder"
+  },
+  "build": {
+    "appId": "dev.stillmail.app",
+    "files": [
+      "src/**/*",
+      "node_modules/htm/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "htm": "^3.1.1"
+  },
+  "devDependencies": {
+    "electron": "^45.3.4"
+  }
+}
