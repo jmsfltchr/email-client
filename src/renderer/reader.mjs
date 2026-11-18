@@ -16,13 +16,16 @@ function loadBody(m) {
 
 const FRAME_CSS = 'html,body{margin:0;padding:0}body{font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#222;background:#fff;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}blockquote{margin:0 0 0 6px;padding-left:12px;border-left:2px solid #ddd;color:#555}';
 
+// Plain-text mail follows the app's dark theme; HTML mail keeps the white page it was designed for.
+const PLAIN_CSS = 'html{color-scheme:dark}body{color:#e9e7e1;background:#1e2024}a{color:#7fd1b6}blockquote{border-color:#3a3d43;color:#b9b6ad}';
+
 function EmailBody({ full }) {
   const [images, setImages] = useState(S.user.settings.loadImages);
   const frame = useRef();
   const clean = useMemo(() => (full.html ? sanitizeEmailHtml(full.html) : { html: textToHtml(full.text || ''), remoteImages: false }), [full]);
   const srcdoc = useMemo(() => {
     const csp = `default-src 'none'; style-src 'unsafe-inline'; img-src data: ${images ? 'https: http:' : ''}; font-src data:`;
-    return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${clean.html}</body></html>`;
+    return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}${full.html ? '' : PLAIN_CSS}</style></head><body>${clean.html}</body></html>`;
   }, [clean, images]);
 
   const onLoad = () => {
@@ -45,7 +48,7 @@ function EmailBody({ full }) {
       <div class="img-note">Remote images are hidden to block tracking.
         <button class="btn small" onClick=${() => setImages(true)}>Show images</button>
       </div>`}
-    <div class="paper">
+    <div class=${full.html ? 'paper' : 'paper plain'}>
       <iframe ref=${frame} sandbox="allow-same-origin" srcdoc=${srcdoc} onLoad=${onLoad} title="Message body"></iframe>
     </div>`;
 }

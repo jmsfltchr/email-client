@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, powerMonitor } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, powerMonitor, nativeTheme } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -250,7 +250,7 @@ function createWindow() {
     minWidth: 980,
     minHeight: 600,
     title: 'Stillmail',
-    backgroundColor: '#f6f4ef',
+    backgroundColor: '#16171a',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, spellcheck: true },
   });
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
@@ -269,6 +269,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => handlers.focusWindow());
   app.whenReady().then(() => {
+    nativeTheme.themeSource = 'dark'; // native menus, dialogs and form controls match the UI
     config = readJson('config.json', config);
     for (const [name, fn] of Object.entries(handlers)) {
       ipcMain.handle(name, async (_e, ...args) => fn(...args));
