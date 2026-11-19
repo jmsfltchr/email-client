@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS = {
   keywords: DEFAULT_KEYWORDS,
   notify: true,
   loadImages: false,
+  senderImages: true, // contact photos and organisation icons
   syncMonths: 12,
 };
 
@@ -41,6 +42,7 @@ export function defaultState() {
     flagged: {}, // message key -> ts (manually escalated)
     acked: {}, // message key -> true (attention dismissed)
     done: {}, // message key -> true (needs-reply dismissed)
+    orgColor: {}, // root domain -> palette index
   };
 }
 

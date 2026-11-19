@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('mailApi', {
   send: call('send'),
   searchRemote: call('searchRemote'),
   syncNow: call('syncNow'),
+  orgIcon: call('orgIcon'),
   openExternal: call('openExternal'),
   focusWindow: call('focusWindow'),
   onEvent: (cb) => {

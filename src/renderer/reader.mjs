@@ -2,6 +2,7 @@ import { html, useState, useEffect, useMemo, useRef, cx, ago, fullDate, bytes, d
 import { S, api, closeReader, markDone, ack, toggleFlag, setSenderKind, toggleQuiet, toast, accountOf, set } from './store.mjs';
 import { startReply } from './compose.mjs';
 import { baseSubject } from '../core/classify.mjs';
+import { Avatar } from './avatar.mjs';
 
 const bodyCache = new Map();
 function loadBody(m) {
@@ -73,6 +74,7 @@ function MessageCard({ m, open, onToggle }) {
   return html`
     <div class="msg">
       <div class="msg-h" onClick=${onToggle}>
+        <${Avatar} addr=${m.from.addr} name=${m.from.name} />
         <span class="from">${m.kind === 'me' ? 'You' : displayName(m.from)}</span>
         <span class="meta">${open ? m.from.addr : m.snippet}</span>
         <span class="age" title=${fullDate(m.ts)}>${open ? fullDate(m.ts) : ago(m.ts)}</span>

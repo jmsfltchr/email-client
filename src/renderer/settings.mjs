@@ -147,6 +147,11 @@ export function Settings() {
           <input type="checkbox" checked=${st.notify} onChange=${(e) => setSetting('notify', e.target.checked)} />
         </div>
         <div class="form-row">
+          <label>Sender photos and icons<small>contact photos from your Google contacts; organisation icons from Google's favicon service</small></label>
+          <input type="checkbox" checked=${st.senderImages} onChange=${(e) => setSetting('senderImages', e.target.checked)} />
+          ${S.photosDenied.length > 0 && html`<span class="err-text">Reconnect ${S.photosDenied.join(', ')} to allow contact photos.</span>`}
+        </div>
+        <div class="form-row">
           <label>Remote images<small>off blocks tracking pixels</small></label>
           <input type="checkbox" checked=${st.loadImages} onChange=${(e) => setSetting('loadImages', e.target.checked)} /> <span>Always load</span>
         </div>

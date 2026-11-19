@@ -4,6 +4,7 @@ import { useState, useEffect, displayName } from './util.mjs';
 import { buildModel, normaliseState, DAY } from '../core/classify.mjs';
 import { domainOf, rootDomain } from '../core/domains.mjs';
 import { createDemoApi } from './demo.mjs';
+import { assignColors, isFreeMail } from '../core/colors.mjs';
 
 export const S = {
   ready: false,
@@ -11,6 +12,8 @@ export const S = {
   accounts: [],
   hasOAuthClient: false,
   messages: new Map(),
+  photos: {}, // address -> contact photo URL
+  photosDenied: [], // accounts signed in without the contacts permission
   user: normaliseState(null),
   model: null,
   view: 'home', // home | search | settings
@@ -52,6 +55,11 @@ export function useStore() {
 export function rebuild() {
   const myAddrs = new Set(S.accounts.map((a) => a.email));
   S.model = buildModel([...S.messages.values()], S.user, { now: Date.now(), myAddrs });
+  // Give newly seen organisations a colour, busiest first, and remember it.
+  const volume = new Map();
+  for (const s of S.model.senders.values()) if (!isFreeMail(s.root)) volume.set(s.root, (volume.get(s.root) || 0) + s.count);
+  const fresh = assignColors(S.user.orgColor, [...volume].sort((a, b) => b[1] - a[1]).map(([root]) => root));
+  if (Object.keys(fresh).length) { Object.assign(S.user.orgColor, fresh); saveSoon(); }
   notify();
 }
 
@@ -62,12 +70,15 @@ function rebuildSoon() {
 }
 
 let saveTimer = null;
+function saveSoon() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => api.saveState(S.user), 300);
+}
 /** Mutate persisted user state, re-derive, and save. */
 export function mutate(fn) {
   fn(S.user);
   rebuild();
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => api.saveState(S.user), 300);
+  saveSoon();
 }
 
 export function setSetting(key, value) { mutate((u) => { u.settings[key] = value; }); }
@@ -160,6 +171,8 @@ function onEvent(e) {
     notify();
   } else if (e.type === 'error') {
     set({ errors: { ...S.errors, [e.acct]: e.message } });
+  } else if (e.type === 'photos') {
+    set({ photos: e.photos || {}, photosDenied: e.denied || [] });
   } else if (e.type === 'accounts') {
     S.accounts = e.accounts;
     rebuild();
@@ -181,6 +194,8 @@ export async function init() {
   S.hasOAuthClient = boot.hasOAuthClient;
   S.user = normaliseState(boot.state);
   S.messages = new Map(boot.messages.map((m) => [m.key, m]));
+  S.photos = boot.photos || {};
+  S.photosDenied = boot.photosDenied || [];
   api.onEvent(onEvent);
   S.ready = true;
   rebuild();

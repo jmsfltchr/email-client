@@ -186,6 +186,28 @@ export function generateDemo(now = Date.now()) {
   };
 }
 
+const svg = (body) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${body}</svg>`)}`;
+
+// Stand-ins for contact photos: a plain illustrated portrait, so the photo path is visible in the demo.
+const portrait = (bg, skin, hair) => svg(`<rect width="64" height="64" fill="${bg}"/><ellipse cx="32" cy="66" rx="25" ry="22" fill="${hair}"/><circle cx="32" cy="28" r="13" fill="${skin}"/><path d="M18 27a14 14 0 0 1 28 0c-4-7-10-9-14-9s-10 2-14 9z" fill="${hair}"/>`);
+const DEMO_PHOTOS = {
+  'priya@fernhill.example': portrait('#c9dfe8', '#b98058', '#2a1f1a'),
+  'marcus.oyelaran@brightwater.example': portrait('#e6d9c3', '#7a4f36', '#17130f'),
+  'helen.rowan@mailbox.example': portrait('#dfe6d2', '#e8bfa4', '#b9b4ad'),
+};
+
+// Stand-ins for organisation icons (generic shapes, not real logos). Others fall back to a coloured initial.
+const DEMO_ICONS = {
+  'github.com': svg('<circle cx="32" cy="32" r="26" fill="#1f2328"/><circle cx="32" cy="32" r="10" fill="#fff"/>'),
+  'stripe.com': svg('<rect x="6" y="6" width="52" height="52" rx="12" fill="#5b54e8"/><path d="M18 40l28-16v18l-28 6z" fill="#fff"/>'),
+  'circleci.com': svg('<circle cx="32" cy="32" r="24" fill="none" stroke="#2b2b2b" stroke-width="9"/><circle cx="32" cy="32" r="7" fill="#2b2b2b"/>'),
+  'atlassian.net': svg('<path d="M10 54l22-44 22 44z" fill="#1d5fd1"/>'),
+  'google.com': svg('<rect x="8" y="12" width="48" height="44" rx="6" fill="#2f73e0"/><rect x="16" y="24" width="32" height="24" rx="2" fill="#fff"/>'),
+  'slack.com': svg('<rect x="10" y="26" width="44" height="12" rx="6" fill="#7a2a82"/><rect x="26" y="10" width="12" height="44" rx="6" fill="#d9952b"/>'),
+  'linkedin.com': svg('<rect x="6" y="6" width="52" height="52" rx="8" fill="#0b63b8"/><rect x="16" y="26" width="8" height="22" fill="#fff"/><circle cx="20" cy="18" r="4.5" fill="#fff"/><path d="M30 26h8v4c6-8 14-4 14 4v14h-8V36c0-5-6-5-6 0v12h-8z" fill="#fff"/>'),
+  'amazon.co.uk': svg('<path d="M10 40c14 10 30 10 44 0" fill="none" stroke="#d98a12" stroke-width="7" stroke-linecap="round"/><circle cx="32" cy="24" r="10" fill="#232323"/>'),
+};
+
 export function createDemoApi() {
   const demo = generateDemo();
   const byKey = new Map(demo.messages.map((m) => [m.key, m]));
@@ -202,7 +224,7 @@ export function createDemoApi() {
 
   return {
     async bootstrap() {
-      return { demo: true, accounts: demo.accounts, hasOAuthClient: false, state: store('stillmail.demo.state'), messages: demo.messages };
+      return { demo: true, accounts: demo.accounts, hasOAuthClient: false, state: store('stillmail.demo.state'), messages: demo.messages, photos: DEMO_PHOTOS };
     },
     onEvent(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     async saveState(state) { store('stillmail.demo.state', state); },
@@ -235,6 +257,7 @@ export function createDemoApi() {
       return demo.messages.filter((m) => accts.includes(m.acct) && words.every((w) => `${m.subject} ${demo.bodies.get(m.key).text}`.toLowerCase().includes(w))).map((m) => m.key);
     },
     async syncNow() {},
+    async orgIcon(root) { return DEMO_ICONS[root] || null; },
     async openExternal(url) { window.open(url, '_blank', 'noopener'); },
     async focusWindow() {},
     async setOAuthClient() { throw new Error('Not available in demo mode'); },

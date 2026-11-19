@@ -161,3 +161,37 @@ test('Gmail client: retries rate limits, pages lists, picks send transport by si
     assert.ok(seen[0].init.body.includes('{"threadId":"T"}'));
   } finally { globalThis.setTimeout = realTimeout; }
 });
+
+import { fetchContactPhotos, fetchOrgIcon } from '../src/main/contacts.mjs';
+
+test('contact photos: merges saved and other contacts, skips placeholders, reports missing permission', async () => {
+  const calls = [];
+  const gmail = {
+    async request(url, { query }) {
+      calls.push([url, query]);
+      if (url.endsWith('/connections')) {
+        return query.pageToken
+          ? { connections: [{ emailAddresses: [{ value: 'B@y.com' }], photos: [{ url: 'https://p/b' }] }] }
+          : { nextPageToken: 'n', connections: [{ emailAddresses: [{ value: 'a@x.com' }, { value: 'a2@x.com' }], photos: [{ url: 'https://p/default', default: true }, { url: 'https://p/a' }] }] };
+      }
+      if (query.sources) throw new GmailError(400, 'bad sources');
+      return { otherContacts: [{ emailAddresses: [{ value: 'c@z.com' }], photos: [{ url: 'https://p/c' }] }, { emailAddresses: [{ value: 'd@z.com' }], photos: [{ url: 'https://p/d', default: true }] }, { emailAddresses: [{ value: 'a@x.com' }], photos: [{ url: 'https://p/other' }] }] };
+    },
+  };
+  const r = await fetchContactPhotos(gmail);
+  assert.deepEqual(r.photos, { 'a@x.com': 'https://p/a', 'a2@x.com': 'https://p/a', 'b@y.com': 'https://p/b', 'c@z.com': 'https://p/c' });
+  assert.equal(r.denied, false);
+  assert.equal(calls.length, 4);
+  const denied = await fetchContactPhotos({ async request() { throw new GmailError(403, 'insufficient scope'); } });
+  assert.deepEqual([denied.photos, denied.denied], [{}, true]);
+});
+
+test('org icons: data URL on success, null for unknown or reserved domains', async () => {
+  const png = Buffer.from([137, 80, 78, 71]);
+  const ok = async (url) => { assert.match(String(url), /favicons\?domain=github\.com&sz=64$/); return new Response(png, { headers: { 'content-type': 'image/png' } }); };
+  assert.equal(await fetchOrgIcon('github.com', ok), `data:image/png;base64,${png.toString('base64')}`);
+  assert.equal(await fetchOrgIcon('nope.dev', async () => new Response(png, { status: 404, headers: { 'content-type': 'image/png' } })), null);
+  const never = async () => { throw new Error('should not be called'); };
+  assert.equal(await fetchOrgIcon('fernhill.example', never), null);
+  assert.equal(await fetchOrgIcon('bad domain/../x', never), null);
+});

@@ -6,6 +6,7 @@ import { authorize, refresh } from './oauth.mjs';
 import { Gmail } from './gmail.mjs';
 import { AccountSync } from './sync.mjs';
 import { buildRaw, toFull } from '../core/mime.mjs';
+import { fetchContactPhotos, fetchOrgIcon } from './contacts.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO = process.argv.includes('--demo');
@@ -66,6 +67,61 @@ function flushSave(email) {
 
 // ------------------------------------------------------------ accounts
 
+// Sender images. Photos: {email: {at, photos:{addr:url}, denied}}. Icons: {root: {at, d: dataUrl|null}}.
+let photoCache = {};
+let iconCache = {};
+const iconPending = new Map();
+let iconActive = 0;
+const iconQueue = [];
+let iconSaveTimer = null;
+const DAY_MS = 86400000;
+
+const allPhotos = () => Object.assign({}, ...config.accounts.map((a) => photoCache[a.email]?.photos || {}));
+const photosDenied = () => config.accounts.filter((a) => photoCache[a.email]?.denied).map((a) => a.email);
+
+async function refreshPhotos(email, force = false) {
+  const cached = photoCache[email];
+  if (!force && cached && Date.now() - cached.at < DAY_MS) return;
+  const sync = syncs.get(email);
+  if (!sync) return;
+  const r = await fetchContactPhotos(sync.gmail).catch(() => null);
+  if (!r || (r.error && !r.denied && !Object.keys(r.photos).length)) return; // transient failure: keep what we have
+  photoCache[email] = { at: Date.now(), photos: r.photos, denied: r.denied };
+  writeJson('photos.json', photoCache);
+  emit({ type: 'photos', photos: allPhotos(), denied: photosDenied() });
+}
+
+function runIconQueue() {
+  while (iconActive < 4 && iconQueue.length) {
+    const job = iconQueue.shift();
+    iconActive++;
+    job().finally(() => { iconActive--; runIconQueue(); });
+  }
+}
+
+function orgIcon(root) {
+  root = String(root || '').toLowerCase();
+  const hit = iconCache[root];
+  if (hit && Date.now() - hit.at < (hit.d ? 30 : 7) * DAY_MS) return hit.d;
+  if (iconPending.has(root)) return iconPending.get(root);
+  const p = new Promise((resolve) => {
+    iconQueue.push(async () => {
+      try {
+        const d = await fetchOrgIcon(root);
+        iconCache[root] = { at: Date.now(), d };
+        clearTimeout(iconSaveTimer);
+        iconSaveTimer = setTimeout(() => writeJson('icons.json', iconCache), 3000);
+        resolve(d);
+      } catch {
+        resolve(null); // offline: try again next session, do not cache
+      }
+    });
+    runIconQueue();
+  });
+  iconPending.set(root, p);
+  return p;
+}
+
 async function accessToken(email) {
   const cached = tokens.get(email);
   if (cached && cached.expires_at - Date.now() > 60000) return cached.access_token;
@@ -88,6 +144,7 @@ function startSync(email) {
   });
   syncs.set(email, sync);
   sync.tick();
+  refreshPhotos(email);
   return sync;
 }
 
@@ -117,7 +174,7 @@ const handlers = {
   bootstrap() {
     const messages = [];
     for (const s of syncs.values()) for (const m of s.messages.values()) messages.push(m);
-    return { demo: DEMO, accounts: publicAccounts(), hasOAuthClient: !!config.oauth, state: readJson('state.json', null), messages };
+    return { demo: DEMO, accounts: publicAccounts(), hasOAuthClient: !!config.oauth, state: readJson('state.json', null), messages, photos: allPhotos(), photosDenied: photosDenied() };
   },
 
   saveState(state) { writeJson('state.json', state); },
@@ -140,6 +197,7 @@ const handlers = {
     else config.accounts.push({ email, label: label || (config.accounts.length ? 'Personal' : 'Work'), color: COLORS[config.accounts.length % COLORS.length], name: '', refreshEnc: enc(tok.refresh_token) });
     saveConfig();
     syncs.get(email)?.stop();
+    delete photoCache[email]; // new sign-in may carry new permissions
     startSync(email);
     emit({ type: 'accounts', accounts: publicAccounts() });
     win?.focus();
@@ -155,6 +213,8 @@ const handlers = {
     saveTimers.delete(email);
     config.accounts = config.accounts.filter((a) => a.email !== email);
     saveConfig();
+    delete photoCache[email];
+    writeJson('photos.json', photoCache);
     fs.rmSync(dataPath(mailFile(email)), { force: true });
     emit({ type: 'messages', added: [], removed });
     emit({ type: 'accounts', accounts: publicAccounts() });
@@ -227,7 +287,9 @@ const handlers = {
     return keys;
   },
 
-  syncNow() { for (const s of syncs.values()) s.tick(); },
+  syncNow() { for (const s of syncs.values()) { s.tick(); refreshPhotos(s.email); } },
+
+  orgIcon,
 
   openExternal(url) {
     if (/^(https?:|mailto:)/i.test(url)) shell.openExternal(url);
@@ -271,6 +333,8 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     nativeTheme.themeSource = 'dark'; // native menus, dialogs and form controls match the UI
     config = readJson('config.json', config);
+    photoCache = readJson('photos.json', {});
+    iconCache = readJson('icons.json', {});
     for (const [name, fn] of Object.entries(handlers)) {
       ipcMain.handle(name, async (_e, ...args) => fn(...args));
     }

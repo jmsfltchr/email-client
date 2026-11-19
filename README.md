@@ -21,13 +21,13 @@ npm run demo
 Stillmail talks to Gmail directly from your machine with your own Google OAuth client. No server sits in between.
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project and enable the **Gmail API**.
-2. Configure the OAuth consent screen. Add the scopes `gmail.readonly` and `gmail.send`, and add each of your Gmail addresses as a test user (for a Workspace account you can choose *Internal* instead).
+2. Also enable the **People API** (used only for contact photos). Configure the OAuth consent screen. Add the scopes `gmail.readonly`, `gmail.send`, `contacts.readonly` and `contacts.other.readonly`, and add each of your Gmail addresses as a test user (for a Workspace account you can choose *Internal* instead).
 3. Create credentials → **OAuth client ID** → application type **Desktop app**.
 4. Start Stillmail, paste the client ID and secret, then **Connect a Gmail account** once per account. Each account gets a tag (Work, Personal, …) you can rename and recolour in Settings.
 
 While the consent screen is in *Testing*, Google expires sign-ins after 7 days. Publishing the app (it can stay unverified for personal use) removes that limit.
 
-Stillmail requests read-only access plus permission to send. It never archives, labels, marks as read or deletes anything in Gmail. All of its own state (who is important, topic order, dismissals) is stored locally.
+Stillmail requests read-only access to mail and contacts, plus permission to send. It never archives, labels, marks as read or deletes anything in Gmail. All of its own state (who is important, topic order, dismissals) is stored locally.
 
 ## How it works
 
@@ -45,6 +45,8 @@ Stillmail requests read-only access plus permission to send. It never archives, 
 - or you flag it yourself.
 
 Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channels that send a different subject every time (newsletters, marketing) are not flagged for novelty.
+
+**Faces and colours.** People are circles and organisations are rounded squares. A person shows their contact photo when your Google contacts have one, otherwise their initials. A notification channel shows its organisation's site icon, otherwise its initial. Every organisation gets its own colour, used for its name chip, its icon ring and its marker in the filter tree; the organisations you hear from most are guaranteed different colours. People at a company share its colour, while people on public mailboxes (gmail.com and similar) each get their own. Colours never change once assigned. Icons are fetched from Google's favicon service and cached; photos and icons can be turned off in Settings.
 
 **Fading.** Mail is at full strength for 7 days, dimmed until 30 days, then leaves the home view and lives on in Search. Both cutoffs are settings.
 

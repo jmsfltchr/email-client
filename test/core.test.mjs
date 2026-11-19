@@ -138,3 +138,22 @@ test('reorder pins the dragged topic and everything above it', () => {
   const ordered = orderTopics([{ key: 'x', lastTs: 5 }, { key: 'y', lastTs: 9 }, { key: 'z', lastTs: 1 }], ['z']);
   assert.deepEqual(ordered.map((t) => t.key), ['z', 'y', 'x']);
 });
+
+import { PALETTE, assignColors, hashColor, isFreeMail, initials } from '../src/core/colors.mjs';
+
+test('identity colours: stable, and distinct for the first organisations', () => {
+  assert.equal(hashColor('jo@gmail.com'), hashColor('jo@gmail.com'));
+  const ids = Array.from({ length: PALETTE.length }, (_, i) => `org${i}.com`);
+  const first = assignColors({}, ids);
+  assert.equal(new Set(Object.values(first)).size, PALETTE.length, 'no colour reused until the palette is exhausted');
+  // existing assignments are kept; a newcomer takes a least-used slot
+  const some = { 'a.com': 0, 'b.com': 0, 'c.com': 1 };
+  const next = assignColors(some, ['a.com', 'new.com']);
+  assert.deepEqual(Object.keys(next), ['new.com']);
+  assert.ok(![0, 1].includes(next['new.com']));
+  assert.deepEqual(assignColors(some, ['new.com']), next, 'deterministic');
+  assert.ok(isFreeMail('gmail.com') && !isFreeMail('github.com'));
+  assert.equal(initials('Priya Raman', 'p@x.com'), 'PR');
+  assert.equal(initials('"Doe, Jane (Acme)"', 'j@x.com'), 'DA');
+  assert.equal(initials('', 'zed@x.com'), 'Z');
+});

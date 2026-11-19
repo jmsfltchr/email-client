@@ -8,6 +8,7 @@ import { Compose, newDraft, startReply } from './compose.mjs';
 import { Reader } from './reader.mjs';
 import { Search } from './search.mjs';
 import { Settings, Welcome, RuleEditor } from './settings.mjs';
+import { Avatar, OrgChip, Swatch } from './avatar.mjs';
 
 const PERIODS = [[1, '24h'], [3, '3d'], [7, '7d'], [30, '30d'], [90, '90d']];
 
@@ -48,6 +49,7 @@ function TagTree() {
     <div class=${cx('node', `l${level}`, tagSel.has(id) && 'on')} key=${id}>
       ${hasKids ? html`<button class="tw" onClick=${() => toggleOpen(id)} aria-label="Expand">${openNodes.has(id) || f ? '▾' : '▸'}</button>` : html`<span class="tw"></span>`}
       <input type="checkbox" checked=${tagSel.has(id)} onChange=${() => toggleIn('tagSel', id)} aria-label=${`Filter by ${label}`} />
+      ${extra?.root && html`<${Swatch} root=${extra.root} />`}
       <span class="nm" title=${extra?.title || label} onClick=${() => toggleIn('tagSel', id)}>${label}</span>
       ${extra?.kind && html`<span class="kind">${extra.kind}</span>`}
       <span class="ct">${count}</span>
@@ -61,7 +63,7 @@ function TagTree() {
         const oid = `o:${o.root}`;
         const showKids = openNodes.has(oid) || !!f;
         return html`
-          ${node(oid, 0, o.org, o.n, true, { title: o.root })}
+          ${node(oid, 0, o.org, o.n, true, { title: o.root, root: o.root })}
           ${showKids && o.channels.map((c) => {
             const cid = `c:${c.addr}`;
             const kidsOpen = openNodes.has(cid) || (!!f && c.topics.some((t) => match(t.label)));
@@ -76,7 +78,7 @@ function TagTree() {
 
 function SyncStatus() {
   const { accounts, progress, errors, demo } = S;
-  if (demo) return html`<div class="sync">Demo data — nothing is sent anywhere.</div>`;
+  if (demo) return html`<div class="sync">Demo data — no mail is read or sent.</div>`;
   return html`
     <div class="sync">
       ${accounts.map((a) => {
@@ -117,18 +119,13 @@ function Sidebar() {
 
 // ------------------------------------------------------------------ home rows
 
-const AcctDot = ({ m }) => {
-  const a = accountOf(m.acct);
-  return html`<i class="dot" style=${{ background: a.color }} title=${a.label}></i>`;
-};
-
 function PersonRow({ m }) {
   const band = ageBand(m.ts);
   const { now } = cutoffs();
   return html`
     <div class=${cx('row', band, S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)} tabindex="0"
       onKeyDown=${(e) => { if (e.key === 'Enter') openMessage(m); }}>
-      <${AcctDot} m=${m} />
+      <${Avatar} addr=${m.from.addr} name=${m.from.name} acct=${m.acct} />
       <span class="who">${displayName(m.from)}</span>
       <span class="subj">${baseSubject(m.subject) || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span class="snip">— ${m.snippet}</span>`}</span>
       <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
@@ -145,7 +142,7 @@ function Path({ m }) {
   const t = m.topic && S.model.topics.get(m.topic);
   if (!s) return html`<span class="path">${m.from.addr}</span>`;
   if (s.kind !== 'channel') return html`<span class="path"><b>${displayName(m.from)}</b><span class="sep">·</span>${s.addr}</span>`;
-  return html`<span class="path" title=${s.addr}><b>${s.org}</b><span class="sep">›</span>${s.channel}${t && html`<span class="sep">›</span>${t.label}`}</span>`;
+  return html`<span class="path" title=${s.addr}><${OrgChip} root=${s.root} org=${s.org} /><span class="sep">›</span>${s.channel}${t && html`<span class="sep">›</span>${t.label}`}</span>`;
 }
 
 function AttentionRow({ m }) {
@@ -153,7 +150,7 @@ function AttentionRow({ m }) {
   return html`
     <div class=${cx('row', ageBand(m.ts) === 'fresh' || flagged ? 'fresh' : 'fading', S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)} tabindex="0"
       onKeyDown=${(e) => { if (e.key === 'Enter') openMessage(m); }}>
-      <${AcctDot} m=${m} />
+      <${Avatar} addr=${m.from.addr} name=${m.from.name} acct=${m.acct} />
       <div class="attn-main">
         <div class="l1">
           ${m.reasons.map((r) => html`<span class=${cx('reason', r.type === 'keyword' && 'kw')}>${r.text}</span>`)}
@@ -215,7 +212,8 @@ function TopicList({ rows }) {
               const up = e.key === 'ArrowUp';
               move(t.key, keys[i + (up ? -1 : 1)], !up);
             }}>⠿</span>
-          <span class="path" style=${{ flex: 1 }} title=${t.addr}><b>${t.org}</b><span class="sep">›</span>${t.channel}<span class="sep">›</span>${t.label}</span>
+          <${Avatar} addr=${t.addr} acct=${latest.acct} small />
+          <span class="path" style=${{ flex: 1 }} title=${t.addr}><${OrgChip} root=${t.root} org=${t.org} /><span class="sep">›</span>${t.channel}<span class="sep">›</span>${t.label}</span>
           ${flagged && html`<i class="flagdot" title="Has mail flagged for attention"></i>`}
           ${ranked.has(t.key) && html`<span class="pinned" title="In your priority order">●</span>`}
           <span class="count">${msgs.length > 1 ? `×${msgs.length}` : ''}</span>

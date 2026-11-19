@@ -1,6 +1,7 @@
 import { html, useState, useMemo, useEffect, useRef, cx, ago, fullDate, displayName } from './util.mjs';
 import { S, api, passes, cutoffs, openMessage, toast } from './store.mjs';
 import { domainOf, rootDomain } from '../core/domains.mjs';
+import { Avatar, Swatch } from './avatar.mjs';
 
 const RANGES = [['all', 'Any time'], ['near', 'Recent'], ['far', 'Fading'], ['old', 'Older']];
 
@@ -133,7 +134,7 @@ export function Search() {
           <div class="col-list" role="listbox" aria-label="Domains" aria-multiselectable="true">
             ${domainList.slice(0, 300).map((d) => html`
               <div class=${cx('facet', domains.has(d.root) && 'on')} role="option" aria-selected=${domains.has(d.root)} onClick=${() => toggleDomain(d.root)}>
-                <span class="nm">${d.root}</span><span class="ct">${d.n}</span>
+                <${Swatch} root=${d.root} /><span class="nm">${d.root}</span><span class="ct">${d.n}</span>
               </div>`)}
             ${domainList.length === 0 && html`<div class="empty">No senders</div>`}
           </div>
@@ -156,7 +157,7 @@ export function Search() {
             ${results.slice(0, limit).map((m) => html`
               <div class=${cx('result', S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)}>
                 <span class="d" title=${fullDate(m.ts)}>${ago(m.ts)}</span>
-                <span class="f">${m.kind === 'me' ? `To ${m.to[0] || ''}` : displayName(m.from)}</span>
+                <span class="f"><${Avatar} addr=${m.kind === 'me' ? m.to[0] || m.from.addr : m.from.addr} name=${m.kind === 'me' ? '' : m.from.name} small /> ${m.kind === 'me' ? `To ${m.to[0] || ''}` : displayName(m.from)}</span>
                 <span class="s">${m.subject || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span>— ${m.snippet}</span>`}</span>
               </div>`)}
             ${results.length > limit && html`<button class="more" onClick=${() => setLimit(limit + 300)}>Show more</button>`}
