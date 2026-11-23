@@ -62,8 +62,6 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Dismissing a topic.** Hover a topic in Notifications and click *Dismiss* to hide it until a new email arrives on that topic; when it comes back it shows only what is new.
 
-**Raw.** The Raw tab lists every synced message from every account, sent and received, newest first, 100 to a page, with no grouping or filtering.
-
 **Unsubscribe.** When a message offers a way to unsubscribe, an *Unsubscribe* action appears under it and always asks for confirmation first, saying exactly what it will do. It uses the sender's one-click unsubscribe request when offered, otherwise sends the unsubscribe email the sender asks for, otherwise opens their unsubscribe page in the browser pane for you to finish.
 
 **Fading.** Mail is at full strength for 7 days, dimmed until 30 days, then leaves the home view and lives on in Search. Both cutoffs are settings.
@@ -81,7 +79,6 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 | `c` | Compose |
 | `/` | Search |
 | `g` | Focus (home) |
-| `w` | Raw list |
 | `,` | Settings |
 | `r` / `a` / `f` | Reply / reply all / forward the open conversation |
 | `b` | Bump the open conversation to the top of its list |

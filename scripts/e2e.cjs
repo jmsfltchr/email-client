@@ -475,30 +475,15 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.click('section[aria-label="Notifications"] .seg >> text=7d');
   });
 
-  await step('raw tab: every message, newest first, paginated', async () => {
-    await page.click('.nav >> text=Raw');
-    await page.waitForSelector('.raw-row');
-    assert.equal(await page.locator('.raw-row').count(), 100);
-    const total = await page.evaluate(async () => (await import('./store.mjs')).S.messages.size);
-    const pages = Math.ceil(total / 100);
-    assert.equal((await page.locator('.pager span').textContent()).trim(), `Page 1 of ${pages}`);
-    const times = await page.locator('.raw-row .t').allTextContents();
-    assert.deepStrictEqual(times, [...times].sort().reverse(), 'newest first');
-    const first = times[0];
-    await page.click('.pager >> text=Older');
-    assert.equal((await page.locator('.pager span').textContent()).trim(), `Page 2 of ${pages}`);
-    assert.ok((await page.locator('.raw-row .t').first().textContent()) <= times[99]);
-    await page.click('.pager >> text=Oldest');
-    assert.equal(await page.locator('.raw-row').count(), total - (pages - 1) * 100);
-    await page.click('.pager >> text=Newest');
-    assert.equal(await page.locator('.raw-row .t').first().textContent(), first);
-    await page.screenshot({ path: `${SP}/raw.png` });
-  });
-
   await step('unsubscribe is offered where a message allows it, and only acts after confirmation', async () => {
     const sent = () => page.evaluate(() => window.__demoUnsubscribed || []);
-    await page.click('.pager >> text=Older');
-    await page.locator('.raw-row', { hasText: 'offers@peakline.example' }).first().click();
+    const openFrom = async (addr) => {
+      await page.click('.nav >> text=Search');
+      await page.fill('input[aria-label="Search text"]', '');
+      await page.fill('input[aria-label="Filter senders"]', addr);
+      await page.locator('.result').first().click();
+    };
+    await openFrom('offers@peakline.example');
     await page.locator('.reader .unsub').waitFor();
     await page.click('.reader .unsub');
     await page.locator('.unsub-confirm', { hasText: 'Sends an unsubscribe request to peakline.example' }).waitFor();
@@ -512,7 +497,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.locator('.reader .unsub', { hasText: 'Unsubscribe requested' }).waitFor();
     assert.deepStrictEqual(await sent(), ['https://peakline.example/u/abc123']);
     // a sender with only a footer link: confirming opens their page in the browser pane
-    await page.locator('.raw-row', { hasText: 'notifications@github.com' }).first().click();
+    await openFrom('notifications@github.com');
     await page.locator('.reader .unsub').waitFor();
     await page.click('.reader .unsub');
     await page.locator('.unsub-confirm', { hasText: 'Opens the unsubscribe page at example.com' }).waitFor();
