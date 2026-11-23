@@ -80,9 +80,12 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     assert.equal(await old.isVisible(), false, 'quoted history hidden');
     const height = () => page.locator('.reader iframe').evaluate((el) => el.getBoundingClientRect().height);
     const folded = await height();
+    const overflow = () => page.locator('.reader iframe').evaluate((el) => { const r = el.contentDocument.documentElement; return r.scrollHeight - r.clientHeight; });
+    assert.equal(await overflow(), 0, 'frame fits its content exactly when folded');
     await body.locator('.sm-quote-toggle').click();
     await old.waitFor({ state: 'visible' });
     await page.waitForFunction((h) => document.querySelector('.reader iframe').getBoundingClientRect().height > h + 80, folded);
+    assert.equal(await overflow(), 0, 'and when unfolded');
     await body.locator('.sm-quote-toggle').click();
     assert.equal(await old.isVisible(), false);
     await page.waitForFunction((h) => Math.abs(document.querySelector('.reader iframe').getBoundingClientRect().height - h) < 2, folded);
@@ -96,6 +99,11 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
       return [open > h + 80, Math.abs(el.getBoundingClientRect().height - h) < 2];
     }, folded);
     assert.deepStrictEqual(pinned, [true, true]);
+    const inner = await page.locator('.reader iframe').evaluate((el) => {
+      const root = el.contentDocument.documentElement;
+      return [el.contentWindow.getComputedStyle(root).overflowY, root.scrollHeight <= root.clientHeight + 1];
+    });
+    assert.deepStrictEqual(inner, ['hidden', true], 'the message has no scrollbar of its own');
   });
 
   await step('ctrl/cmd+F finds text across the conversation', async () => {
@@ -384,6 +392,18 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.frameLocator('.reader iframe').locator('text=Perfect, thank you').waitFor();
     await page.click('.earlier');
     assert.equal(await page.locator('.reader .msg').count(), 7);
+    // scrolling with the pointer over a message body moves the whole pane, never the message inside itself
+    for (let i = 0; i < 6; i++) await page.locator('.reader .msg-h').nth(i).click();
+    await page.waitForFunction(() => document.querySelectorAll('.reader iframe').length === 7 && [...document.querySelectorAll('.reader iframe')].every((f) => f.contentDocument?.body?.textContent));
+    const pane = page.locator('.reader-body');
+    await pane.evaluate((el) => { el.scrollTop = 0; });
+    assert.ok(await pane.evaluate((el) => el.scrollHeight > el.clientHeight + 100), 'conversation is taller than the pane');
+    const box = await page.locator('.reader iframe').nth(1).boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 240);
+    await page.waitForFunction(() => document.querySelector('.reader-body').scrollTop > 100);
+    const innerMoved = await page.locator('.reader iframe').evaluateAll((els) => els.some((el) => el.contentDocument.documentElement.scrollTop > 0 || el.contentDocument.body.scrollTop > 0));
+    assert.equal(innerMoved, false);
     // from the home view a thread opens on its latest unread message
     const landed = await page.evaluate(async () => {
       const { S, openMessage } = await import('./store.mjs');

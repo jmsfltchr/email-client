@@ -32,6 +32,10 @@ const BLOCKED_CSS = 'img[src^="http"]{display:none!important}';
 let userMovedAt = 0; // last time the user scrolled or clicked in the reader, including inside a message
 const userMoved = () => { userMovedAt = Date.now(); };
 
+// A message never scrolls vertically inside its own frame: the frame is sized to the content and the
+// reader pane is the only thing that scrolls. (Sideways scrolling stays, for mail wider than the pane.)
+const NO_INNER_SCROLL_CSS = 'html{overflow-x:auto!important;overflow-y:hidden!important}body{overflow:visible!important}';
+
 const frameReady = new Set(); // listeners told whenever a message body (re)renders
 
 function EmailBody({ full, m }) {
@@ -47,7 +51,7 @@ function EmailBody({ full, m }) {
   const clean = useMemo(() => (full.html ? sanitizeEmailHtml(full.html, { forward }) : { html: textToHtml(full.text || ''), remoteImages: false }), [full]);
   const srcdoc = useMemo(() => {
     const csp = `default-src 'none'; style-src 'unsafe-inline'; img-src data: ${images ? 'https: http:' : ''}; font-src data:`;
-    const theme = (!dark ? '' : full.html ? HTML_DARK_CSS : PLAIN_DARK_CSS) + (images ? '' : BLOCKED_CSS);
+    const theme = (!dark ? '' : full.html ? HTML_DARK_CSS : PLAIN_DARK_CSS) + (images ? '' : BLOCKED_CSS) + NO_INNER_SCROLL_CSS;
     // Theme rules come last so that they win over the email's own styles.
     return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${clean.html}<style>${theme}</style></body></html>`;
   }, [clean, images, dark]);
@@ -63,8 +67,14 @@ function EmailBody({ full, m }) {
       all.selectNodeContents(doc.body);
       const cs = doc.defaultView.getComputedStyle(doc.body);
       const bottom = all.getBoundingClientRect().bottom - doc.documentElement.getBoundingClientRect().top;
-      const h = Math.ceil(bottom + parseFloat(cs.paddingBottom) + parseFloat(cs.marginBottom));
-      el.style.height = `${Math.max(40, h > 0 ? h : doc.documentElement.scrollHeight)}px`;
+      // A wide email keeps a horizontal scrollbar, which needs room of its own below the content.
+      const root = doc.documentElement;
+      const bar = root.scrollWidth > root.clientWidth ? el.offsetHeight - root.clientHeight || 12 : 0;
+      const h = Math.max(40, Math.ceil(bottom + parseFloat(cs.paddingBottom) + parseFloat(cs.marginBottom)) + bar);
+      el.style.height = `${h}px`;
+      // The bounding box misses trailing margins. Whatever still overflows is real content: grow to fit it.
+      const short = root.scrollHeight - root.clientHeight;
+      if (short > 0) el.style.height = `${h + short}px`;
     };
     fit();
     new ResizeObserver(fit).observe(doc.body);
