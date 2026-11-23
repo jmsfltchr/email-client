@@ -48,6 +48,8 @@ export function defaultState() {
     done: {}, // message key -> true (needs-reply dismissed)
     read: {}, // message key -> true: opened here while Gmail still has it unread
     imageSenders: {}, // addr -> true: always load remote images from this sender
+    topicDismissed: {}, // topic key -> ts of its newest message when dismissed; hidden until newer mail
+    unsubscribed: {}, // sender addr -> ts an unsubscribe was requested
     bumped: {}, // message key -> ts of the last bump; stands in for the date when ordering and fading
     orgColor: {}, // root domain -> palette index
   };

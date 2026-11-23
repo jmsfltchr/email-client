@@ -4,6 +4,7 @@ import { startReply, newDraft } from './compose.mjs';
 import { openLink } from './webpane.mjs';
 import { baseSubject } from '../core/classify.mjs';
 import { Avatar } from './avatar.mjs';
+import { findUnsubscribe, describeUnsubscribe } from '../core/unsubscribe.mjs';
 
 const bodyCache = new Map();
 function loadBody(m) {
@@ -198,6 +199,45 @@ function FindBar({ onClose }) {
     </div>`;
 }
 
+/** Unsubscribe, behind an explicit confirmation. */
+function Unsubscribe({ m, full }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const how = useMemo(() => {
+    const links = full.html
+      ? [...new DOMParser().parseFromString(full.html, 'text/html').querySelectorAll('a[href]')].map((a) => ({ href: a.getAttribute('href').trim(), text: a.textContent.replace(/\s+/g, ' ').trim() }))
+      : [...(full.text || '').matchAll(/https?:\/\/[^\s<>"]+/g)].map((x) => ({ href: x[0], text: '' }));
+    return findUnsubscribe({ ...full.headers, links });
+  }, [full]);
+  if (!how || m.kind === 'me') return null;
+  const done = S.user.unsubscribed[m.from.addr];
+  const who = S.model.senders.get(m.from.addr);
+  const name = who?.kind === 'channel' ? `${who.org} (${m.from.addr})` : m.from.addr;
+  const go = async () => {
+    setBusy(true);
+    try {
+      if (how.kind === 'oneclick') await api.unsubscribePost(how.url);
+      else if (how.kind === 'mailto') await api.send({ acct: m.acct, to: how.to, cc: '', bcc: '', subject: how.subject, text: how.body, attachments: [] });
+      else openLink(how.url);
+      mutate((u) => { u.unsubscribed[m.from.addr] = Date.now(); });
+      toast(how.kind === 'link' ? 'Finish unsubscribing on the page that opened' : `Unsubscribe request sent to ${how.kind === 'mailto' ? how.to : new URL(how.url).host}`);
+      setConfirming(false);
+    } catch (e) {
+      toast(`Could not unsubscribe: ${String(e.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`, { ms: 8000 });
+    }
+    setBusy(false);
+  };
+  if (!confirming) {
+    return html`<button class="btn ghost small unsub" onClick=${() => setConfirming(true)} title=${done ? `Requested ${fullDate(done)}` : 'Stop mail from this sender (asks first)'}>${done ? 'Unsubscribe requested · again' : 'Unsubscribe'}</button>`;
+  }
+  return html`
+    <div class="unsub-confirm" role="alertdialog" aria-label="Confirm unsubscribe">
+      <span><b>Unsubscribe from ${name}?</b> ${describeUnsubscribe(how)}</span>
+      <button class="btn small danger" disabled=${busy} onClick=${go}>${busy ? 'Unsubscribing…' : 'Yes, unsubscribe'}</button>
+      <button class="btn small" disabled=${busy} onClick=${() => setConfirming(false)}>Cancel</button>
+    </div>`;
+}
+
 function MessageCard({ m, open, onToggle }) {
   const [full, setFull] = useState(null);
   const [error, setError] = useState(null);
@@ -237,6 +277,8 @@ function MessageCard({ m, open, onToggle }) {
           <button class="btn small" onClick=${() => startReply(m, 'reply')}>Reply</button>
           <button class="btn small" onClick=${() => startReply(m, 'replyAll')}>Reply all</button>
           <button class="btn small" onClick=${() => startReply(m, 'forward')}>Forward</button>
+          <span style=${{ flex: 1 }}></span>
+          ${full && html`<${Unsubscribe} m=${m} full=${full} />`}
         </div>`}
     </div>`;
 }

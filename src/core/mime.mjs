@@ -143,6 +143,7 @@ export function toFull(msg) {
       from: header(hs, 'From'), to: header(hs, 'To'), cc: header(hs, 'Cc'), bcc: header(hs, 'Bcc'),
       replyTo: header(hs, 'Reply-To'), subject: header(hs, 'Subject'), date: header(hs, 'Date'),
       messageId: header(hs, 'Message-ID'), references: header(hs, 'References'),
+      listUnsubscribe: header(hs, 'List-Unsubscribe'), listUnsubscribePost: header(hs, 'List-Unsubscribe-Post'),
     },
     text: '',
     html: '',

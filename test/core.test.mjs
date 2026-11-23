@@ -285,3 +285,23 @@ test('quoted history in plain-text replies is separated from the new text', () =
   assert.equal(splitQuotedText('FYI\n\n---------- Forwarded message ---------\nFrom: A <a@x.com>\nDate: Mon\nSubject: x\n\nbody'), null);
   assert.equal(splitQuotedText('On Mon, A wrote:\n> everything is quoted'), null);
 });
+
+import { findUnsubscribe, parseListUnsubscribe, describeUnsubscribe } from '../src/core/unsubscribe.mjs';
+
+test('unsubscribe: one-click request, then email, then the sender\'s page', () => {
+  const both = '<mailto:leave@list.example?subject=Unsub%20me&body=id42>, <https://list.example/u/42>';
+  assert.deepEqual(parseListUnsubscribe(both), { urls: ['https://list.example/u/42'], mailto: { to: 'leave@list.example', subject: 'Unsub me', body: 'id42' } });
+  assert.deepEqual(findUnsubscribe({ listUnsubscribe: both, listUnsubscribePost: 'List-Unsubscribe=One-Click' }), { kind: 'oneclick', url: 'https://list.example/u/42' });
+  assert.equal(findUnsubscribe({ listUnsubscribe: both }).kind, 'mailto', 'no one-click promise: use the email');
+  assert.equal(findUnsubscribe({ listUnsubscribe: '<http://list.example/u>', listUnsubscribePost: 'List-Unsubscribe=One-Click' }).kind, 'link', 'one-click needs https');
+  assert.deepEqual(findUnsubscribe({ listUnsubscribe: '<https://list.example/prefs>' }), { kind: 'link', url: 'https://list.example/prefs' });
+  // from the body
+  const links = [{ href: 'https://shop.example/sale', text: 'Shop now' }, { href: 'https://shop.example/prefs?u=1', text: 'Manage your email preferences' }, { href: 'https://shop.example/x/9f3', text: 'Unsubscribe' }];
+  assert.deepEqual(findUnsubscribe({ links }), { kind: 'link', url: 'https://shop.example/x/9f3' });
+  assert.deepEqual(findUnsubscribe({ links: links.slice(0, 2) }), { kind: 'link', url: 'https://shop.example/prefs?u=1' });
+  assert.deepEqual(findUnsubscribe({ links: [{ href: 'https://e.example/track?opt_out=1&id=7', text: 'click here' }] }), { kind: 'link', url: 'https://e.example/track?opt_out=1&id=7' });
+  assert.equal(findUnsubscribe({ links: [{ href: 'mailto:stop@x.example', text: 'unsubscribe' }] }).to, 'stop@x.example');
+  assert.equal(findUnsubscribe({ links: [{ href: 'https://shop.example/sale', text: 'Shop now' }, { href: 'javascript:alert(1)', text: 'Unsubscribe' }] }), null);
+  assert.equal(findUnsubscribe({ listUnsubscribe: '', links: [] }), null);
+  assert.match(describeUnsubscribe({ kind: 'mailto', to: 'a@b.example' }), /email from your account to a@b\.example/);
+});

@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('mailApi', {
   saveAttachment: call('saveAttachment'),
   send: call('send'),
   searchRemote: call('searchRemote'),
+  unsubscribePost: call('unsubscribePost'),
   syncNow: call('syncNow'),
   orgIcon: call('orgIcon'),
   openExternal: call('openExternal'),

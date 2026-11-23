@@ -1,7 +1,7 @@
 import { html, render, useState, useMemo, useEffect, useRef, cx, ago, fullDate, displayName } from './util.mjs';
 import {
   S, api, init, set, useStore, passes, toggleIn, cutoffs, ageBand, accountOf, openMessage, closeReader,
-  markDone, undoDone, ack, bump, isUnread, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
+  markDone, undoDone, ack, bump, isUnread, dismissTopic, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
 } from './store.mjs';
 import { DAY, orderTopics, reorder, baseSubject } from '../core/classify.mjs';
 import { Compose, newDraft, startReply } from './compose.mjs';
@@ -10,6 +10,7 @@ import { Search } from './search.mjs';
 import { Settings, Welcome, RuleEditor } from './settings.mjs';
 import { Avatar, OrgChip, Swatch } from './avatar.mjs';
 import { WebPane, closeWeb } from './webpane.mjs';
+import { Raw } from './raw.mjs';
 
 const PERIODS = [[1, '24h'], [3, '3d'], [7, '7d'], [30, '30d'], [90, '90d']];
 
@@ -103,6 +104,7 @@ function Sidebar() {
       <div class="nav">
         ${nav('home', 'Focus', 'g')}
         ${nav('search', 'Search', '/')}
+        ${nav('raw', 'Raw', 'w')}
         ${nav('settings', 'Settings', ',')}
       </div>
       ${accounts.length > 0 && html`
@@ -222,6 +224,9 @@ function TopicList({ rows }) {
             }}>⠿</span>
           <${Avatar} addr=${t.addr} acct=${latest.acct} />
           <span class="path" style=${{ flex: 1 }} title=${t.addr}><${OrgChip} root=${t.root} org=${t.org} /><span class="sep">›</span>${t.channel}<span class="sep">›</span>${t.label}</span>
+          <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
+            <button class="btn small" title="Hide this topic until a new email arrives on it" onClick=${() => dismissTopic(t)}>Dismiss</button>
+          </span>
           ${flagged && html`<i class="flagdot" title="Has mail flagged for attention"></i>`}
           ${ranked.has(t.key) && html`<span class="pinned" title="In your priority order">●</span>`}
           <span class="count">${msgs.length > 1 ? `×${msgs.length}` : ''}</span>
@@ -300,10 +305,12 @@ function Home() {
     const cut = c.now - period * DAY;
     const out = [];
     for (const t of model.topics.values()) {
-      if (t.lastTs < cut) continue;
+      // A dismissed topic stays away until newer mail arrives, and then shows only that.
+      const since = Math.max(cut, (user.topicDismissed[t.key] || 0) + 1);
+      if (t.lastTs < since) continue;
       const msgs = [];
       let flagged = false;
-      for (let i = t.msgs.length - 1; i >= 0 && t.msgs[i].ts >= cut; i--) {
+      for (let i = t.msgs.length - 1; i >= 0 && t.msgs[i].ts >= since; i--) {
         const m = t.msgs[i];
         if (!passes(m)) continue;
         msgs.push(m);
@@ -314,7 +321,7 @@ function Home() {
     const order = orderTopics(out.map((r) => r.topic), user.topicOrder);
     const byKey = new Map(out.map((r) => [r.topic.key, r]));
     return order.map((t) => byKey.get(t.key));
-  }, [model, period, S.acctSel, S.tagSel]);
+  }, [model, period, S.acctSel, S.tagSel, user.topicDismissed]);
 
   const attnShown = attnAll ? attention : attention.slice(0, 8);
   return html`
@@ -381,6 +388,7 @@ function onGlobalKey(e) {
   const keys = {
     c: () => S.accounts.length && newDraft(),
     '/': () => set({ view: 'search' }),
+    w: () => set({ view: 'raw' }),
     g: () => set({ view: 'home' }),
     ',': () => set({ view: 'settings' }),
     r: () => target && startReply(target, 'reply'),
@@ -416,6 +424,7 @@ function App() {
       <${Sidebar} />
       ${noAccounts && s.view !== 'settings'
         ? html`<main class="main"><${Welcome} /></main>`
+        : s.view === 'raw' ? html`<main style=${{ minWidth: 0, minHeight: 0 }}><${Raw} /></main>`
         : s.view === 'search' ? html`<main style=${{ minWidth: 0, minHeight: 0 }}><${Search} /></main>`
         : s.view === 'settings' ? html`<main class="main"><${Settings} /></main>`
         : html`<main class="main"><${Home} /></main>`}

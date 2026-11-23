@@ -289,6 +289,19 @@ const handlers = {
     return keys;
   },
 
+  /** RFC 8058 one-click unsubscribe: a POST the sender has promised needs no further interaction. */
+  async unsubscribePost(url) {
+    if (!/^https:\/\//i.test(url || '')) throw new Error('Unsubscribe address is not a secure web address.');
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'List-Unsubscribe=One-Click',
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new Error(`The sender's server answered ${res.status}.`);
+    return true;
+  },
+
   syncNow() { for (const s of syncs.values()) { s.tick(); refreshPhotos(s.email); } },
 
   orgIcon,

@@ -175,6 +175,16 @@ export const setSenderKind = (addr, kind) => mutate((u) => {
 export const toggleSenderTopic = (addr) => mutate((u) => {
   if (u.senderTopic[addr]) delete u.senderTopic[addr]; else u.senderTopic[addr] = true;
 });
+/** Hide a topic from Notifications until something newer arrives on it. */
+export function dismissTopic(topic) {
+  const before = S.user.topicDismissed[topic.key];
+  const newest = S.model.topics.get(topic.key)?.lastTs ?? topic.lastTs;
+  mutate((u) => { u.topicDismissed[topic.key] = newest; });
+  toast('Dismissed until new mail arrives on this topic', {
+    action: 'Undo',
+    onAction: () => { mutate((u) => { if (before) u.topicDismissed[topic.key] = before; else delete u.topicDismissed[topic.key]; }); set({ toast: null }); },
+  });
+}
 export const toggleQuiet = (topicKey) => mutate((u) => {
   if (u.quietTopics[topicKey]) delete u.quietTopics[topicKey]; else u.quietTopics[topicKey] = true;
 });

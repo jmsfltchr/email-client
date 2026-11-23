@@ -241,7 +241,10 @@ export function createDemoApi() {
       const fmt = (a) => a.map((x) => (typeof x === 'string' ? x : `${x.name} <${x.addr}>`)).join(', ');
       return {
         id, threadId: m.threadId, ts: m.ts, text: b.html ? '' : b.text, html: b.html,
-        headers: { from: fmt([m.from]), to: fmt(m.to), cc: b.cc || '', bcc: '', replyTo: '', subject: m.subject, date: new Date(m.ts).toUTCString(), messageId: `<${id}@demo.stillmail>`, references: '' },
+        headers: { from: fmt([m.from]), to: fmt(m.to), cc: b.cc || '', bcc: '', replyTo: '', subject: m.subject, date: new Date(m.ts).toUTCString(), messageId: `<${id}@demo.stillmail>`, references: '',
+          // one sender offers one-click unsubscribe; the rest only have the link in their footer
+          listUnsubscribe: m.from.addr === 'offers@peakline.example' ? '<https://peakline.example/u/abc123>, <mailto:unsub@peakline.example?subject=unsubscribe>' : '',
+          listUnsubscribePost: m.from.addr === 'offers@peakline.example' ? 'List-Unsubscribe=One-Click' : '' },
         attachments: b.attachments.map((a, index) => ({ index, ...a })),
       };
     },
@@ -264,6 +267,7 @@ export function createDemoApi() {
       return demo.messages.filter((m) => accts.includes(m.acct) && words.every((w) => `${m.subject} ${demo.bodies.get(m.key).text}`.toLowerCase().includes(w))).map((m) => m.key);
     },
     async syncNow() {},
+    async unsubscribePost(url) { (window.__demoUnsubscribed ||= []).push(url); return true; },
     async orgIcon(root) { return DEMO_ICONS[root] || null; },
     async openExternal(url) { window.open(url, '_blank', 'noopener'); },
     async focusWindow() {},

@@ -198,7 +198,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.click('.reader-actions >> text=No reply needed');
     const names = await page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
     assert.ok(!names.includes('Dana Whitfield'));
-    await page.click('.reader-top button');
+    await page.click('.reader-top >> [title^="Close"]');
   });
 
   await step('attention: dismiss + never flag topic + mark important', async () => {
@@ -446,6 +446,89 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     assert.deepStrictEqual(labels, ['Harbourbank›alerts›all mail']);
     await page.locator('.topic', { hasText: 'all mail' }).filter({ hasText: 'Harbourbank' }).locator('text=Split this sender by subject').click();
     assert.ok(await count() > 1);
+  });
+
+  await step('dismiss a topic until new mail arrives on it', async () => {
+    await page.click('.nav >> text=Focus');
+    const slack = () => page.locator('.topic', { hasText: 'unread messages in Fernhill' });
+    assert.equal(await slack().count(), 1);
+    await slack().locator('> .row').hover();
+    await slack().locator('> .row >> text=Dismiss').click();
+    assert.equal(await slack().count(), 0);
+    await page.click('.toast >> text=Undo');
+    assert.equal(await slack().count(), 1);
+    await slack().locator('> .row').hover();
+    await slack().locator('> .row >> text=Dismiss').click();
+    await page.click('section[aria-label="Notifications"] .seg >> text=90d');
+    assert.equal(await slack().count(), 0, 'stays dismissed in every period');
+    // a new email on the topic brings it back, showing only the new one
+    await page.evaluate(async () => {
+      const { S, rebuild } = await import('./store.mjs');
+      const old = [...S.messages.values()].find((m) => m.from.addr === 'no-reply@slack.com');
+      const m = { ...old, id: 'fresh1', key: `${old.acct}:fresh1`, threadId: 'tfresh1', ts: Date.now(), subject: 'You have 3 unread messages in Fernhill' };
+      S.messages.set(m.key, m);
+      rebuild();
+    });
+    await slack().waitFor();
+    assert.equal((await slack().locator('.count').textContent()).trim(), '', 'only the new message is listed');
+    assert.match(await slack().locator('.age').textContent(), /now/);
+    await page.click('section[aria-label="Notifications"] .seg >> text=7d');
+  });
+
+  await step('raw tab: every message, newest first, paginated', async () => {
+    await page.click('.nav >> text=Raw');
+    await page.waitForSelector('.raw-row');
+    assert.equal(await page.locator('.raw-row').count(), 100);
+    const total = await page.evaluate(async () => (await import('./store.mjs')).S.messages.size);
+    const pages = Math.ceil(total / 100);
+    assert.equal((await page.locator('.pager span').textContent()).trim(), `Page 1 of ${pages}`);
+    const times = await page.locator('.raw-row .t').allTextContents();
+    assert.deepStrictEqual(times, [...times].sort().reverse(), 'newest first');
+    const first = times[0];
+    await page.click('.pager >> text=Older');
+    assert.equal((await page.locator('.pager span').textContent()).trim(), `Page 2 of ${pages}`);
+    assert.ok((await page.locator('.raw-row .t').first().textContent()) <= times[99]);
+    await page.click('.pager >> text=Oldest');
+    assert.equal(await page.locator('.raw-row').count(), total - (pages - 1) * 100);
+    await page.click('.pager >> text=Newest');
+    assert.equal(await page.locator('.raw-row .t').first().textContent(), first);
+    await page.screenshot({ path: `${SP}/raw.png` });
+  });
+
+  await step('unsubscribe is offered where a message allows it, and only acts after confirmation', async () => {
+    const sent = () => page.evaluate(() => window.__demoUnsubscribed || []);
+    await page.click('.pager >> text=Older');
+    await page.locator('.raw-row', { hasText: 'offers@peakline.example' }).first().click();
+    await page.locator('.reader .unsub').waitFor();
+    await page.click('.reader .unsub');
+    await page.locator('.unsub-confirm', { hasText: 'Sends an unsubscribe request to peakline.example' }).waitFor();
+    assert.deepStrictEqual(await sent(), [], 'nothing happens before confirming');
+    await page.screenshot({ path: `${SP}/unsubscribe.png` });
+    await page.click('.unsub-confirm >> text=Cancel');
+    assert.equal(await page.locator('.unsub-confirm').count(), 0);
+    assert.deepStrictEqual(await sent(), []);
+    await page.click('.reader .unsub');
+    await page.click('.unsub-confirm >> text=Yes, unsubscribe');
+    await page.locator('.reader .unsub', { hasText: 'Unsubscribe requested' }).waitFor();
+    assert.deepStrictEqual(await sent(), ['https://peakline.example/u/abc123']);
+    // a sender with only a footer link: confirming opens their page in the browser pane
+    await page.locator('.raw-row', { hasText: 'notifications@github.com' }).first().click();
+    await page.locator('.reader .unsub').waitFor();
+    await page.click('.reader .unsub');
+    await page.locator('.unsub-confirm', { hasText: 'Opens the unsubscribe page at example.com' }).waitFor();
+    assert.equal(await page.locator('.web').count(), 0);
+    await page.click('.unsub-confirm >> text=Yes, unsubscribe');
+    await page.waitForSelector('.web');
+    assert.equal(await page.evaluate(async () => (await import('./store.mjs')).S.web.url), 'https://example.com/unsubscribe');
+    // people do not get the action
+    await page.locator('.reader-h h1').click();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.click('.nav >> text=Focus');
+    await page.click('section[aria-label="Needs reply"] >> text=Helen Rowan');
+    await page.waitForSelector('.reader iframe');
+    assert.equal(await page.locator('.reader .unsub').count(), 0);
+    await page.keyboard.press('Escape');
   });
 
   await step('settings renders', async () => {
