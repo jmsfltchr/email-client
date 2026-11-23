@@ -241,3 +241,29 @@ test('attention period: the chosen window decides what is listed, flagged mail a
   assert.deepEqual(listed(1, (st) => { st.flagged[alarms[3].key] = NOW; }), ['120'], 'flagged by hand, any age');
   assert.deepEqual(listed(3, (st) => { st.bumped[alarms[2].key] = NOW - DAY; }), ['60', '2'], 'bump date counts');
 });
+
+import { analyseIcon } from '../src/core/colors.mjs';
+
+test('brand colour: dominant hue that is not white, black or grey', () => {
+  const px = (n, r, g, b, a = 255) => Array.from({ length: n }, () => [r, g, b, a]).flat();
+  // orange mark on a white tile, with some black text and anti-aliased greys
+  const orange = analyseIcon(Uint8ClampedArray.from([...px(600, 255, 255, 255), ...px(250, 243, 128, 32), ...px(80, 0, 0, 0), ...px(60, 140, 140, 140), ...px(34, 250, 180, 110)]));
+  const [r, g, b] = orange.color.match(/\d+/g).map(Number);
+  assert.ok(r > 220 && g > 100 && g < 170 && b < 90, orange.color);
+  assert.equal(orange.invert, false);
+  // two colours: the larger area wins
+  const two = analyseIcon(Uint8ClampedArray.from([...px(300, 20, 110, 230), ...px(100, 230, 40, 40)]));
+  const [r2, , b2] = two.color.match(/\d+/g).map(Number);
+  assert.ok(b2 > r2, two.color);
+  // a dark brand colour is lifted so a thin underline shows on a dark surface, keeping its hue
+  const navy = analyseIcon(Uint8ClampedArray.from(px(400, 10, 30, 110)));
+  const [nr, ng, nb] = navy.color.match(/\d+/g).map(Number);
+  assert.ok(nb > 150 && nb > nr && nb > ng, navy.color);
+  // black shape on transparent: no colour, and it must be inverted to be visible
+  assert.deepEqual(analyseIcon(Uint8ClampedArray.from([...px(500, 20, 22, 26), ...px(524, 0, 0, 0, 0)])), { color: null, invert: true });
+  // black tile with a white glyph, fully opaque: no colour, shown as it is
+  assert.deepEqual(analyseIcon(Uint8ClampedArray.from([...px(800, 10, 10, 10), ...px(224, 255, 255, 255)])), { color: null, invert: false });
+  // white glyph on transparent: already visible
+  assert.deepEqual(analyseIcon(Uint8ClampedArray.from([...px(400, 250, 250, 250), ...px(624, 0, 0, 0, 0)])), { color: null, invert: false });
+  assert.deepEqual(analyseIcon(new Uint8ClampedArray(64)), { color: null, invert: false });
+});

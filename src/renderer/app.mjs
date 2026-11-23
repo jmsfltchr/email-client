@@ -218,7 +218,7 @@ function TopicList({ rows }) {
               const up = e.key === 'ArrowUp';
               move(t.key, keys[i + (up ? -1 : 1)], !up);
             }}>⠿</span>
-          <${Avatar} addr=${t.addr} acct=${latest.acct} small />
+          <${Avatar} addr=${t.addr} acct=${latest.acct} />
           <span class="path" style=${{ flex: 1 }} title=${t.addr}><${OrgChip} root=${t.root} org=${t.org} /><span class="sep">›</span>${t.channel}<span class="sep">›</span>${t.label}</span>
           ${flagged && html`<i class="flagdot" title="Has mail flagged for attention"></i>`}
           ${ranked.has(t.key) && html`<span class="pinned" title="In your priority order">●</span>`}

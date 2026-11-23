@@ -141,12 +141,15 @@ a { color: var(--accent); }
 .av.org { border-radius: 7px; font-size: 13px; }
 .av img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; display: block; }
 .av.has-img { box-shadow: 0 0 0 2px var(--c); background: var(--surface); }
-.av.org.has-img { background: #f3f2ee; }
-.av.org.has-img img { width: 70%; height: 70%; object-fit: contain; border-radius: 3px; }
+/* organisation logos stand on their own: no tile, no ring */
+.av.org.has-img { background: none; box-shadow: none; border-radius: 6px; width: 28px; height: 28px; }
+.av.org.has-img img { object-fit: contain; }
+.av.org.invert img { filter: invert(1) hue-rotate(180deg); }
 .av.sm { width: 20px; height: 20px; font-size: 9px; }
 .av.org.sm { border-radius: 5px; font-size: 11px; }
+.av.org.sm.has-img { width: 20px; height: 20px; border-radius: 4px; }
 .av .badge { position: absolute; right: -3px; bottom: -3px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); }
-.org-chip { --c: var(--muted); display: inline-block; background: color-mix(in oklch, var(--c) 22%, transparent); color: color-mix(in oklch, var(--c) 78%, white); border-radius: 5px; padding: 0 7px; font-weight: 650; box-shadow: inset 0 -2px 0 color-mix(in oklch, var(--c) 75%, transparent); }
+.org-chip { --c: var(--muted); display: inline-block; color: var(--ink); font-weight: 650; border-bottom: 2px solid var(--c); line-height: 1.25; }
 .swatch { width: 9px; height: 9px; border-radius: 3px; flex: none; display: inline-block; }
 .result .f .av { margin-right: 3px; }
 

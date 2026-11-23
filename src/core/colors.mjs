@@ -50,3 +50,41 @@ export function initials(name, addr) {
   if (words.length >= 2) return (words[0][0] + words[words.length - 1][0]).toUpperCase();
   return (words[0] || addr || '?').slice(0, 1).toUpperCase();
 }
+
+/**
+ * Find a logo's brand colour from its pixels (RGBA bytes).
+ * Returns {color, invert}: `color` is the dominant hue that is neither near white, near black
+ * nor grey, as "rgb(r g b)" (null when the logo is monochrome); `invert` is true for a dark
+ * shape on a transparent background, which would vanish on a dark surface.
+ */
+export function analyseIcon(data) {
+  const BINS = 24;
+  const bins = Array.from({ length: BINS }, () => ({ w: 0, r: 0, g: 0, b: 0 }));
+  let opaque = 0, clear = 0, lum = 0, colourful = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 128) { clear++; continue; }
+    opaque++;
+    const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
+    lum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
+    if (l > 0.92 || l < 0.1 || d < 0.12) continue;
+    const s = d / (1 - Math.abs(2 * l - 1));
+    if (s < 0.3) continue;
+    let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h = (h * 60 + 360) % 360;
+    const bin = bins[Math.floor(h / (360 / BINS)) % BINS];
+    bin.w += s; bin.r += r * s; bin.g += g * s; bin.b += b * s;
+    colourful++;
+  }
+  if (!opaque) return { color: null, invert: false };
+  if (colourful / opaque < 0.04) {
+    return { color: null, invert: lum / opaque < 0.35 && clear / (opaque + clear) > 0.15 };
+  }
+  const best = bins.reduce((a, b) => (b.w > a.w ? b : a));
+  let [r, g, b] = [best.r / best.w, best.g / best.w, best.b / best.w];
+  // Keep the hue but make sure a thin line of it shows on a dark surface.
+  const l = (Math.max(r, g, b) + Math.min(r, g, b)) / 2;
+  if (l < 0.5) { const k = (0.55 - l) / (1 - l); r += (1 - r) * k; g += (1 - g) * k; b += (1 - b) * k; }
+  const to = (v) => Math.round(v * 255);
+  return { color: `rgb(${to(r)} ${to(g)} ${to(b)})`, invert: false };
+}
