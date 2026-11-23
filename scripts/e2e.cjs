@@ -8,7 +8,8 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
   const app = await _electron.launch({ executablePath: require(path.join(ROOT, 'node_modules/electron')), cwd: ROOT, args: ['.', '--demo', '--no-sandbox', `--user-data-dir=${SP}/ud`], colorScheme: process.env.DARK ? 'dark' : 'light' });
   const page = await app.firstWindow();
   const logs = [];
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${m.type()}] ${m.text()}`); });
+  // (the srcdoc message is Playwright's own probe of the sandboxed email frame, which correctly refuses scripts)
+  page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !m.text().includes("'about:srcdoc' because the document's frame is sandboxed")) logs.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
   page.on('dialog', (d) => d.accept());
   await page.setViewportSize({ width: 1440, height: 920 });
@@ -200,6 +201,55 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.waitForSelector('.reader iframe');
     await page.frameLocator('.reader iframe').locator('text=deploy-laptop').waitFor();
     await shot('search-reader');
+  });
+
+  await step('links open in the browser pane; cmd-click and the button use the system browser', async () => {
+    const server = require('http').createServer((req, res) => {
+      res.setHeader('Content-Type', 'text/html');
+      res.end(req.url === '/two' ? '<title>Second page</title><h1>Two</h1>' : '<title>Local test page</title><h1>One</h1><a id="next" target="_blank" href="/two">next</a>');
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    await app.evaluate(({ shell }) => { global.__opened = []; shell.openExternal = async (u) => { global.__opened.push(u); }; });
+    const opened = () => app.evaluate(() => global.__opened);
+    const link = page.frameLocator('.reader iframe').locator('a', { hasText: 'Review keys' });
+    await link.evaluate((a, href) => { a.href = href; }, `${base}/one`);
+
+    await link.click({ modifiers: ['Meta'] });
+    assert.deepStrictEqual(await opened(), [`${base}/one`]);
+    assert.equal(await page.locator('.web').count(), 0, 'cmd-click does not open the pane');
+
+    await link.click();
+    await page.waitForSelector('.web webview');
+    await page.locator('.web-url', { hasText: 'Local test page' }).waitFor();
+    assert.match(await page.locator('.web-url b').textContent(), /^127\.0\.0\.1:/);
+    assert.deepStrictEqual(await opened(), [`${base}/one`], 'plain click stays in the app');
+    assert.ok(await page.locator('.reader').isVisible(), 'reader stays beside the page');
+    await page.screenshot({ path: `${SP}/web.png` });
+
+    // a target=_blank link inside the page loads in the same pane, and Back returns
+    await app.evaluate(async ({ webContents }) => {
+      const wc = webContents.getAllWebContents().find((c) => c.getType() === 'webview');
+      await wc.executeJavaScript('document.getElementById("next").click()', true);
+    });
+    await page.locator('.web-url', { hasText: 'Second page' }).waitFor();
+    await page.click('.web-bar >> [aria-label="Back"]');
+    await page.locator('.web-url', { hasText: 'Local test page' }).waitFor();
+
+    await page.click('.web-bar >> text=Open in default browser');
+    assert.deepStrictEqual(await opened(), [`${base}/one`, `${base}/one`]);
+    const prefs = await app.evaluate(({ webContents }) => {
+      const wc = webContents.getAllWebContents().find((c) => c.getType() === 'webview');
+      const p = wc.getLastWebPreferences();
+      return { node: p.nodeIntegration, iso: p.contextIsolation, sandbox: p.sandbox, preload: p.preload || null };
+    });
+    assert.deepStrictEqual(prefs, { node: false, iso: true, sandbox: true, preload: null });
+    await page.locator('.reader-h h1').click();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.web').count(), 0);
+    assert.ok(await page.locator('.reader').isVisible(), 'Esc closes the page first, not the message');
+    } finally { server.closeAllConnections(); server.close(); }
   });
 
   await step('rule editor defines regex topic', async () => {

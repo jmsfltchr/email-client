@@ -1,6 +1,7 @@
 import { html, useState, useEffect, useMemo, useRef, cx, ago, fullDate, bytes, displayName, sanitizeEmailHtml, textToHtml } from './util.mjs';
 import { S, api, closeReader, markDone, ack, bump, toggleFlag, setSenderKind, toggleQuiet, toast, accountOf, set } from './store.mjs';
-import { startReply } from './compose.mjs';
+import { startReply, newDraft } from './compose.mjs';
+import { openLink } from './webpane.mjs';
 import { baseSubject } from '../core/classify.mjs';
 import { Avatar } from './avatar.mjs';
 
@@ -40,7 +41,9 @@ function EmailBody({ full }) {
       const a = e.target.closest?.('a[href]');
       if (!a) return;
       e.preventDefault();
-      api.openExternal(a.href);
+      // Web links open in the pane beside the reader (Cmd/Ctrl-click: system browser); mailto starts a draft.
+      if (openLink(a.href, e)) return;
+      if (/^mailto:/i.test(a.href)) newDraft({ to: decodeURIComponent(a.href.slice(7).split('?')[0]) });
     });
   };
 

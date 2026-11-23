@@ -9,6 +9,7 @@ import { Reader } from './reader.mjs';
 import { Search } from './search.mjs';
 import { Settings, Welcome, RuleEditor } from './settings.mjs';
 import { Avatar, OrgChip, Swatch } from './avatar.mjs';
+import { WebPane, closeWeb } from './webpane.mjs';
 
 const PERIODS = [[1, '24h'], [3, '3d'], [7, '7d'], [30, '30d'], [90, '90d']];
 
@@ -361,6 +362,7 @@ function onGlobalKey(e) {
   if (e.key === 'Escape') {
     if (S.ruleEditor) set({ ruleEditor: null });
     else if (typing) e.target.blur();
+    else if (S.web) closeWeb();
     else if (S.open) closeReader();
     return;
   }
@@ -401,7 +403,7 @@ function App() {
   const noAccounts = s.accounts.length === 0;
   const reading = !!s.open && !noAccounts && s.view !== 'settings';
   return html`
-    <div class=${cx('app', reading && 'reading')}>
+    <div class=${cx('app', reading && 'reading', reading && s.web && 'browsing')}>
       <${Sidebar} />
       ${noAccounts && s.view !== 'settings'
         ? html`<main class="main"><${Welcome} /></main>`
@@ -409,6 +411,7 @@ function App() {
         : s.view === 'settings' ? html`<main class="main"><${Settings} /></main>`
         : html`<main class="main"><${Home} /></main>`}
       ${reading && html`<${Reader} />`}
+      ${reading && s.web && html`<${WebPane} />`}
       ${s.compose && html`<${Compose} key=${s.compose.title + (s.compose.inReplyTo || '')} />`}
       ${s.ruleEditor && html`<${RuleEditor} />`}
       ${s.toast && html`

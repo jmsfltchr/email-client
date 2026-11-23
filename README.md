@@ -52,6 +52,8 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Time tabs.** Needs reply, Attention and Notifications each have their own 24h / 3d / 7d / 30d / 90d tabs, remembered separately. Needs reply and Attention use the bump date where there is one, and anything you flagged yourself stays in Attention whatever the tab. Needs reply keeps a *Show older* link so nobody is lost.
 
+**Links.** Clicking a link in an email opens the page in a browser pane to the right of the message, with back, forward, reload and *Open in default browser*. ⌘-click (Ctrl-click on Windows and Linux) sends a link straight to your default browser instead. The pane is an isolated web page with its own cookies; it has no access to your mail and no camera, microphone, location or notification permissions. `mailto:` links start a new message.
+
 **Fading.** Mail is at full strength for 7 days, dimmed until 30 days, then leaves the home view and lives on in Search. Both cutoffs are settings.
 
 **Filters.** Account tags and the org / channel / topic tree in the sidebar are multi-select and filter every view.

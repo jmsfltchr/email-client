@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, powerMonitor, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, powerMonitor, nativeTheme, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -305,6 +305,20 @@ const handlers = {
 
 // ------------------------------------------------------------ app
 
+const WEB_PARTITION = 'persist:stillmail-web';
+const isWebUrl = (url) => /^https?:\/\//i.test(url);
+
+function setupWebPane() {
+  // Pages in the pane get no device or notification permissions.
+  session.fromPartition(WEB_PARTITION).setPermissionRequestHandler((_wc, permission, done) => done(permission === 'fullscreen'));
+  app.on('web-contents-created', (_e, contents) => {
+    if (contents.getType() !== 'webview') return;
+    // Links that want a new window load in the pane itself; nothing but web pages may load there.
+    contents.setWindowOpenHandler(({ url }) => { if (isWebUrl(url)) contents.loadURL(url); return { action: 'deny' }; });
+    contents.on('will-navigate', (e, url) => { if (!isWebUrl(url)) e.preventDefault(); });
+  });
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -313,10 +327,18 @@ function createWindow() {
     minHeight: 600,
     title: 'Stillmail',
     backgroundColor: '#16171a',
-    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, spellcheck: true },
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, spellcheck: true, webviewTag: true },
   });
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   // The UI never navigates; anything else goes to the system browser.
+  // The in-app browser pane is a <webview>: an ordinary sandboxed web page with no access to the app.
+  win.webContents.on('will-attach-webview', (e, prefs, params) => {
+    delete prefs.preload;
+    prefs.nodeIntegration = false;
+    prefs.contextIsolation = true;
+    prefs.sandbox = true;
+    if (params.partition !== WEB_PARTITION || (params.src && !isWebUrl(params.src))) e.preventDefault();
+  });
   win.webContents.setWindowOpenHandler(({ url }) => { handlers.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => {
     if (url === win.webContents.getURL()) return; // reloading the app itself is fine
@@ -331,6 +353,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => handlers.focusWindow());
   app.whenReady().then(() => {
+    setupWebPane();
     nativeTheme.themeSource = 'dark'; // native menus, dialogs and form controls match the UI
     config = readJson('config.json', config);
     photoCache = readJson('photos.json', {});
