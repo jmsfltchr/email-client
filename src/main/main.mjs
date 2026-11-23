@@ -7,6 +7,8 @@ import { Gmail } from './gmail.mjs';
 import { AccountSync } from './sync.mjs';
 import { buildRaw, toFull } from '../core/mime.mjs';
 import { fetchContactPhotos, fetchOrgIcon } from './contacts.mjs';
+import { Notion } from './notion.mjs';
+import { parseDatabaseId, describeSchema, missingProperties, pageToRow, rowToProperties, platformOf } from '../core/notion.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEMO = process.argv.includes('--demo');
@@ -14,7 +16,7 @@ const POLL_MS = 60000;
 const COLORS = ['#3b6fd4', '#c2571a', '#2f8f6b', '#8a4fc7', '#b8365c', '#5f6b7a'];
 
 let win = null;
-let config = { oauth: null, accounts: [] }; // accounts: {email, label, color, name, refreshEnc}
+let config = { oauth: null, accounts: [], notion: null }; // accounts: {email, label, color, name, refreshEnc}; notion: {tokenEnc, dataSourceId, title, url}
 const syncs = new Map(); // email -> AccountSync
 const tokens = new Map(); // email -> {access_token, expires_at}
 const fullCache = new Map(); // `${email}:${id}` -> toFull() result (small LRU)
@@ -168,6 +170,21 @@ async function attachmentBytes(email, msgId, att) {
   return Buffer.from(att.data || '', 'base64url');
 }
 
+// ------------------------------------------------------------ Notion (the Testers tab)
+
+let notionSchema = null;
+const notionStatus = () => (config.notion ? { connected: true, title: config.notion.title, url: config.notion.url } : { connected: false });
+
+function notionClient() {
+  if (!config.notion) throw new Error('Connect a Notion database first.');
+  return new Notion(dec(config.notion.tokenEnc));
+}
+
+async function notionSchemaNow(client) {
+  if (!notionSchema) notionSchema = describeSchema((await client.dataSource(config.notion.dataSourceId)).properties);
+  return notionSchema;
+}
+
 // ------------------------------------------------------------ IPC
 
 const handlers = {
@@ -302,6 +319,57 @@ const handlers = {
     return true;
   },
 
+  notionStatus,
+
+  /** Connect (or re-point) the Testers tab. An empty secret keeps the one already stored. */
+  async notionConnect({ token, database } = {}) {
+    const secret = (token || '').trim() || (config.notion ? dec(config.notion.tokenEnc) : '');
+    if (!secret) throw new Error('Paste the integration secret from Notion.');
+    const id = parseDatabaseId(database);
+    if (!id) throw new Error('That does not look like a Notion database link. Copy it with "Copy link" on the database page.');
+    const client = new Notion(secret);
+    const target = await client.resolve(id);
+    const missing = missingProperties((await client.dataSource(target.dataSourceId)).properties);
+    if (Object.keys(missing).length) await client.addProperties(target.dataSourceId, missing);
+    config.notion = { tokenEnc: enc(secret), ...target };
+    notionSchema = null;
+    saveConfig();
+    return notionStatus();
+  },
+
+  notionDisconnect() {
+    config.notion = null;
+    notionSchema = null;
+    saveConfig();
+    return notionStatus();
+  },
+
+  async notionLoad() {
+    const client = notionClient();
+    notionSchema = null;
+    const schema = await notionSchemaNow(client);
+    const pages = await client.queryAll(config.notion.dataSourceId);
+    return { schema, rows: pages.map((p) => pageToRow(p, schema)) };
+  },
+
+  async notionCreate(patch) {
+    const client = notionClient();
+    const schema = await notionSchemaNow(client);
+    return pageToRow(await client.createPage(config.notion.dataSourceId, rowToProperties(schema, patch)), schema);
+  },
+
+  async notionUpdate(id, patch) {
+    const client = notionClient();
+    const schema = await notionSchemaNow(client);
+    return pageToRow(await client.updatePage(id, { properties: rowToProperties(schema, patch) }), schema);
+  },
+
+  /** Move a person to Notion's trash, or bring them back. */
+  async notionTrash(id, trashed = true) {
+    await notionClient().updatePage(id, { in_trash: !!trashed });
+    return true;
+  },
+
   syncNow() { for (const s of syncs.values()) { s.tick(); refreshPhotos(s.email); } },
 
   orgIcon,
@@ -321,15 +389,27 @@ const handlers = {
 // ------------------------------------------------------------ app
 
 const WEB_PARTITION = 'persist:stillmail-web';
+const CHAT_PARTITION = 'persist:stillmail-chat'; // messaging sign-ins, kept apart from pages opened from email
 const isWebUrl = (url) => /^https?:\/\//i.test(url);
 
 function setupWebPane() {
   // Pages in the pane get no device or notification permissions.
   session.fromPartition(WEB_PARTITION).setPermissionRequestHandler((_wc, permission, done) => done(permission === 'fullscreen'));
+  // Messaging sites: clipboard for copying messages, nothing else. They are told this is plain Chrome,
+  // because several of them (and Google sign-in) turn away browsers that announce themselves as embedded.
+  const chat = session.fromPartition(CHAT_PARTITION);
+  chat.setPermissionRequestHandler((_wc, permission, done) => done(permission === 'fullscreen' || permission === 'clipboard-sanitized-write'));
+  chat.setUserAgent(app.userAgentFallback.replace(/\s(Electron|stillmail|Stillmail)\/\S+/gi, ''));
   app.on('web-contents-created', (_e, contents) => {
     if (contents.getType() !== 'webview') return;
     // Links that want a new window load in the pane itself; nothing but web pages may load there.
-    contents.setWindowOpenHandler(({ url }) => { if (isWebUrl(url)) contents.loadURL(url); return { action: 'deny' }; });
+    // In a conversation, a link to somewhere else goes to the default browser so the chat stays put.
+    contents.setWindowOpenHandler(({ url }) => {
+      if (!isWebUrl(url)) return { action: 'deny' };
+      if (contents.session === chat && platformOf(url) !== platformOf(contents.getURL())) shell.openExternal(url);
+      else contents.loadURL(url);
+      return { action: 'deny' };
+    });
     contents.on('will-navigate', (e, url) => { if (!isWebUrl(url)) e.preventDefault(); });
   });
 }
@@ -352,7 +432,7 @@ function createWindow() {
     prefs.nodeIntegration = false;
     prefs.contextIsolation = true;
     prefs.sandbox = true;
-    if (params.partition !== WEB_PARTITION || (params.src && !isWebUrl(params.src))) e.preventDefault();
+    if (![WEB_PARTITION, CHAT_PARTITION].includes(params.partition) || (params.src && !isWebUrl(params.src))) e.preventDefault();
   });
   win.webContents.setWindowOpenHandler(({ url }) => { handlers.openExternal(url); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, url) => {
@@ -370,7 +450,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     setupWebPane();
     nativeTheme.themeSource = 'dark'; // native menus, dialogs and form controls match the UI
-    config = readJson('config.json', config);
+    config = { ...config, ...readJson('config.json', config) };
     photoCache = readJson('photos.json', {});
     iconCache = readJson('icons.json', {});
     for (const [name, fn] of Object.entries(handlers)) {

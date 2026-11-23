@@ -11,6 +11,7 @@ import { Settings, Welcome, RuleEditor } from './settings.mjs';
 import { Avatar, OrgChip, Swatch } from './avatar.mjs';
 import { WebPane, closeWeb } from './webpane.mjs';
 import { Raw } from './raw.mjs';
+import { Testers } from './testers.mjs';
 
 const PERIODS = [[1, '24h'], [3, '3d'], [7, '7d'], [30, '30d'], [90, '90d']];
 
@@ -105,6 +106,7 @@ function Sidebar() {
         ${nav('home', 'Focus', 'g')}
         ${nav('search', 'Search', '/')}
         ${nav('raw', 'Raw', 'w')}
+        ${nav('testers', 'Testers', 't')}
         ${nav('settings', 'Settings', ',')}
       </div>
       ${accounts.length > 0 && html`
@@ -389,6 +391,7 @@ function onGlobalKey(e) {
     c: () => S.accounts.length && newDraft(),
     '/': () => set({ view: 'search' }),
     w: () => set({ view: 'raw' }),
+    t: () => set({ view: 'testers' }),
     g: () => set({ view: 'home' }),
     ',': () => set({ view: 'settings' }),
     r: () => target && startReply(target, 'reply'),
@@ -422,7 +425,9 @@ function App() {
   return html`
     <div class=${cx('app', reading && 'reading', reading && s.web && 'browsing')}>
       <${Sidebar} />
-      ${noAccounts && s.view !== 'settings'
+      ${(s.view === 'testers' || s.testers.visited) && html`<${Testers} shown=${s.view === 'testers'} />`}
+      ${s.view === 'testers' ? null
+        : noAccounts && s.view !== 'settings'
         ? html`<main class="main"><${Welcome} /></main>`
         : s.view === 'raw' ? html`<main style=${{ minWidth: 0, minHeight: 0 }}><${Raw} /></main>`
         : s.view === 'search' ? html`<main style=${{ minWidth: 0, minHeight: 0 }}><${Search} /></main>`
