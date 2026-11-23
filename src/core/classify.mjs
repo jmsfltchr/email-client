@@ -24,6 +24,8 @@ export const DEFAULT_SETTINGS = {
   nearDays: 7, // within this: current
   farDays: 30, // within this: fading; beyond: search only
   period: 7, // notifications panel window, days
+  needsPeriod: 30, // Needs reply window, days
+  attnPeriod: 30, // Attention window, days
   channelMin: 3, // received >= this many and never replied => notification channel
   keywords: DEFAULT_KEYWORDS,
   notify: true,
@@ -287,7 +289,8 @@ export function isMine(m, myAddrs) {
  */
 export function buildModel(messages, state, { now = Date.now(), myAddrs = new Set() } = {}) {
   const st = state.settings;
-  const farCut = now - st.farDays * DAY;
+  const attnCut = now - st.attnPeriod * DAY; // what the Attention section lists
+  const farCut = now - Math.max(st.farDays, st.attnPeriod, 90) * DAY; // how far back mail is examined at all
 
   // --- who have I written to?
   // Auto-replies (vacation responder and the like) are not me writing to anyone.
@@ -374,7 +377,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
     if (m.kind === 'me') continue;
     const flagged = !!state.flagged[m.key];
     if (flagged) { m.reasons = [{ type: 'flagged', text: 'Flagged by you' }, ...(m.reasons || [])]; attention.push(m); }
-    else if (m.reasons && !state.acked[m.key]) attention.push(m);
+    else if (m.reasons && !state.acked[m.key] && m.eff >= attnCut) attention.push(m);
   }
   attention.sort((a, b) => b.eff - a.eff);
 

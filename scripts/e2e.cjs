@@ -109,6 +109,24 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     assert.ok(names.includes('Rachel Okafor'));
   });
 
+  await step('Needs reply and Attention have their own time tabs', async () => {
+    const who = () => page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
+    const attn = () => page.locator('section[aria-label="Attention"] .row').count();
+    const before = [await who(), await attn()];
+    await page.click('[aria-label="Needs reply period"] >> text=24h');
+    assert.ok((await who()).length < before[0].length && (await who()).length > 0);
+    assert.equal(await attn(), before[1], 'tabs are independent');
+    await page.click('section[aria-label="Needs reply"] .more');
+    assert.ok((await who()).length >= before[0].length, 'older ones are one click away');
+    await page.click('[aria-label="Attention period"] >> text=24h');
+    const day = await attn();
+    assert.ok(day > 0 && day < before[1], `${day} < ${before[1]}`);
+    await page.screenshot({ path: `${SP}/tabs.png` });
+    await page.click('[aria-label="Needs reply period"] >> text=30d');
+    await page.click('[aria-label="Attention period"] >> text=30d');
+    assert.deepStrictEqual([(await who()).length, await attn()], [before[0].length + 1, before[1]]);
+  });
+
   await step('period selector changes topic list', async () => {
     const n7 = (await topicLabels()).length;
     await page.click('section[aria-label="Notifications"] .seg >> text=24h');

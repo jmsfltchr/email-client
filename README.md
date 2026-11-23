@@ -50,6 +50,8 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Bump.** Any item in Needs reply or Attention can be bumped (row button, reader button, or `b`). It jumps to the top, and its bump date replaces its received date for ordering and fading, so it stays on the list while untouched items slip away. Bump again to keep it there. The age shown is still the real one, with an ↑ marker.
 
+**Time tabs.** Needs reply, Attention and Notifications each have their own 24h / 3d / 7d / 30d / 90d tabs, remembered separately. Needs reply and Attention use the bump date where there is one, and anything you flagged yourself stays in Attention whatever the tab. Needs reply keeps a *Show older* link so nobody is lost.
+
 **Fading.** Mail is at full strength for 7 days, dimmed until 30 days, then leaves the home view and lives on in Search. Both cutoffs are settings.
 
 **Filters.** Account tags and the org / channel / topic tree in the sidebar are multi-select and filter every view.

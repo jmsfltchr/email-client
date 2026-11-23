@@ -251,6 +251,16 @@ function TopicList({ rows }) {
 
 // ------------------------------------------------------------------ home
 
+/** The time tabs at the top of each home section; `k` is the setting holding the chosen number of days. */
+function PeriodTabs({ k, label }) {
+  const value = S.user.settings[k];
+  return html`
+    <span class="seg" role="group" aria-label=${`${label} period`}>
+      ${PERIODS.map(([d, text]) => html`<button class=${cx(value === d && 'on')} aria-pressed=${value === d} onClick=${() => setSetting(k, d)}>${text}</button>`)}
+    </span>`;
+}
+const periodLabel = (days) => PERIODS.find(([d]) => d === days)?.[1] || `${days}d`;
+
 function ActiveFilters() {
   const { tagSel, acctSel, model } = S;
   if (!tagSel.size && !acctSel.size) return null;
@@ -278,8 +288,9 @@ function Home() {
   const period = user.settings.period;
 
   const needs = model.needsReply.filter(passes);
-  const needsCurrent = needs.filter((m) => m.eff >= c.far);
-  const needsOld = needs.filter((m) => m.eff < c.far);
+  const needsCut = c.now - user.settings.needsPeriod * DAY;
+  const needsCurrent = needs.filter((m) => m.eff >= needsCut);
+  const needsOld = needs.filter((m) => m.eff < needsCut);
   const attention = model.attention.filter(passes);
 
   const rows = useMemo(() => {
@@ -307,31 +318,32 @@ function Home() {
     <div class="main-inner">
       <${ActiveFilters} />
       <section class="section" aria-label="Needs reply">
-        <div class="section-h"><h2>Needs reply</h2><span class="hint">People you write to, waiting to hear from you</span></div>
+        <div class="section-h"><h2>Needs reply</h2><span class="hint">People you write to, waiting to hear from you</span>
+          <${PeriodTabs} k="needsPeriod" label="Needs reply" />
+        </div>
         <div class="card">
           ${needsCurrent.map((m) => html`<${PersonRow} key=${m.key} m=${m} />`)}
-          ${needsCurrent.length === 0 && html`<div class="empty">Nobody is waiting on you.</div>`}
+          ${needsCurrent.length === 0 && html`<div class="empty">${needsOld.length ? 'Nobody new is waiting on you in this period.' : 'Nobody is waiting on you.'}</div>`}
           ${showOld && needsOld.map((m) => html`<${PersonRow} key=${m.key} m=${m} />`)}
-          ${needsOld.length > 0 && html`<button class="more" onClick=${() => setShowOld(!showOld)}>${showOld ? 'Hide' : 'Show'} older than ${user.settings.farDays} days</button>`}
+          ${needsOld.length > 0 && html`<button class="more" onClick=${() => setShowOld(!showOld)}>${showOld ? 'Hide' : 'Show'} older than ${periodLabel(user.settings.needsPeriod)}</button>`}
         </div>
       </section>
 
       <section class="section" aria-label="Attention">
         <div class="section-h"><h2>Attention</h2><span class="hint">Out of the ordinary: new or rare topics, alarm words, unfamiliar senders, and anything you flag</span>
           ${attention.length > 1 && html`<button class="btn ghost small" onClick=${() => { const list = attention.filter((m) => !user.flagged[m.key]); mutate((u) => { for (const m of list) u.acked[m.key] = true; }); }}>Dismiss all</button>`}
+          <${PeriodTabs} k="attnPeriod" label="Attention" />
         </div>
         <div class="card attn">
           ${attnShown.map((m) => html`<${AttentionRow} key=${m.key} m=${m} />`)}
-          ${attention.length === 0 && html`<div class="empty">Nothing unusual.</div>`}
+          ${attention.length === 0 && html`<div class="empty">Nothing unusual in this period.</div>`}
           ${attention.length > 8 && html`<button class="more" onClick=${() => setAttnAll(!attnAll)}>${attnAll ? 'Show fewer' : 'Show all'}</button>`}
         </div>
       </section>
 
       <section class="section" aria-label="Notifications">
         <div class="section-h"><h2>Notifications</h2><span class="hint">By topic, in your priority order. Nothing here needs action.</span>
-          <span class="seg" role="group" aria-label="Period">
-            ${PERIODS.map(([d, label]) => html`<button class=${cx(period === d && 'on')} aria-pressed=${period === d} onClick=${() => setSetting('period', d)}>${label}</button>`)}
-          </span>
+          <${PeriodTabs} k="period" label="Notifications" />
         </div>
         <div class="card">
           <${TopicList} rows=${rows} />

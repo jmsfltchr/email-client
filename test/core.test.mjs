@@ -224,3 +224,20 @@ test('bump: the bump date replaces the received date for ordering and fading', (
   const later = buildModel(msgs, st, { ...opts, now: NOW + 31 * DAY });
   assert.ok(!later.attention.includes(oldAlarm));
 });
+
+test('attention period: the chosen window decides what is listed, flagged mail always is', () => {
+  const from = 'alerts@svc.com';
+  const routine = Array.from({ length: 8 }, (_, i) => mk({ from, subject: 'Daily report', ts: NOW - (i + 1) * DAY }));
+  const alarms = [2, 20, 60, 120].map((d) => mk({ from, subject: `Thing ${d} overdue now`, ts: NOW - d * DAY - 1000 }));
+  const msgs = [...routine, ...alarms];
+  const listed = (days, mut) => {
+    const st = defaultState(); st.settings.attnPeriod = days; mut?.(st);
+    return buildModel(msgs, st, opts).attention.map((m) => m.subject.split(' ')[1]);
+  };
+  assert.deepEqual(listed(1), []);
+  assert.deepEqual(listed(3), ['2']);
+  assert.deepEqual(listed(30), ['2', '20']);
+  assert.deepEqual(listed(90), ['2', '20', '60']);
+  assert.deepEqual(listed(1, (st) => { st.flagged[alarms[3].key] = NOW; }), ['120'], 'flagged by hand, any age');
+  assert.deepEqual(listed(3, (st) => { st.bumped[alarms[2].key] = NOW - DAY; }), ['60', '2'], 'bump date counts');
+});

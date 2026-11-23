@@ -112,7 +112,7 @@ a { color: var(--accent); }
 .row .who { width: 168px; flex: none; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .subj { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .snip { color: var(--muted); }
-.row .age { flex: none; width: 56px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row .age { flex: none; min-width: 56px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .row .wait { color: var(--warn); }
 .row .bumped { flex: none; color: var(--accent); font-weight: 700; font-size: 12px; }
 .row-actions { display: none; gap: 4px; flex: none; }
