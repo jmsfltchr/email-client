@@ -1,5 +1,5 @@
 import { html, useState, useEffect, useMemo, useRef, cx, ago, fullDate, bytes, displayName, sanitizeEmailHtml, textToHtml } from './util.mjs';
-import { S, api, closeReader, markDone, ack, toggleFlag, setSenderKind, toggleQuiet, toast, accountOf, set } from './store.mjs';
+import { S, api, closeReader, markDone, ack, bump, toggleFlag, setSenderKind, toggleQuiet, toast, accountOf, set } from './store.mjs';
 import { startReply } from './compose.mjs';
 import { baseSubject } from '../core/classify.mjs';
 import { Avatar } from './avatar.mjs';
@@ -127,6 +127,7 @@ export function Reader() {
           <button class="btn" onClick=${() => startReply(target, 'replyAll')} title="Reply all (a)">Reply all</button>
           <button class="btn" onClick=${() => startReply(target, 'forward')} title="Forward (f)">Forward</button>
           <span class="sp"></span>
+          ${(waiting || inAttention || flagged) && html`<button class="btn" onClick=${() => bump(waiting || target)} title="Move to the top of its list and keep it from fading (b)">Bump</button>`}
           ${waiting && html`<button class="btn" onClick=${() => { markDone(waiting); toast('Marked as no reply needed'); }} title="No reply needed (e)">No reply needed</button>`}
           ${inAttention && !flagged && html`<button class="btn" onClick=${() => ack(target)} title="Dismiss (e)">Dismiss</button>`}
           ${target.kind !== 'me' && html`<button class="btn" onClick=${() => toggleFlag(target)}>${flagged ? 'Unflag' : 'Flag for attention'}</button>`}

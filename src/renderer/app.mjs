@@ -1,7 +1,7 @@
 import { html, render, useState, useMemo, useEffect, useRef, cx, ago, fullDate, displayName } from './util.mjs';
 import {
   S, api, init, set, useStore, passes, toggleIn, cutoffs, ageBand, accountOf, openMessage, closeReader,
-  markDone, undoDone, ack, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
+  markDone, undoDone, ack, bump, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
 } from './store.mjs';
 import { DAY, orderTopics, reorder, baseSubject } from '../core/classify.mjs';
 import { Compose, newDraft, startReply } from './compose.mjs';
@@ -120,7 +120,8 @@ function Sidebar() {
 // ------------------------------------------------------------------ home rows
 
 function PersonRow({ m }) {
-  const band = ageBand(m.ts);
+  const band = ageBand(m.eff);
+  const bumped = S.user.bumped[m.key];
   const { now } = cutoffs();
   return html`
     <div class=${cx('row', band, S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)} tabindex="0"
@@ -130,10 +131,12 @@ function PersonRow({ m }) {
       <span class="subj">${baseSubject(m.subject) || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span class="snip">— ${m.snippet}</span>`}</span>
       <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
         <button class="btn small" onClick=${() => startReply(m, 'reply')}>Reply</button>
+        <button class="btn small" title="Move to the top and keep it from fading (b)" onClick=${() => bump(m)}>Bump</button>
         <button class="btn small" title="Remove from this list without replying"
           onClick=${() => { markDone(m); toast('No reply needed', { action: 'Undo', onAction: () => { undoDone(m); set({ toast: null }); } }); }}>No reply needed</button>
       </span>
-      <span class=${cx('age', band !== 'fresh' && 'wait')} title=${fullDate(m.ts)}>${band === 'fresh' ? ago(m.ts, now) : `waiting ${ago(m.ts, now)}`}</span>
+      ${bumped && html`<span class="bumped" title=${`Bumped ${fullDate(bumped)}`}>↑</span>`}
+      <span class=${cx('age', (band !== 'fresh' || bumped) && now - m.ts > S.user.settings.nearDays * DAY && 'wait')} title=${fullDate(m.ts)}>${now - m.ts > S.user.settings.nearDays * DAY ? `waiting ${ago(m.ts, now)}` : ago(m.ts, now)}</span>
     </div>`;
 }
 
@@ -148,7 +151,7 @@ function Path({ m }) {
 function AttentionRow({ m }) {
   const flagged = !!S.user.flagged[m.key];
   return html`
-    <div class=${cx('row', ageBand(m.ts) === 'fresh' || flagged ? 'fresh' : 'fading', S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)} tabindex="0"
+    <div class=${cx('row', ageBand(m.eff) === 'fresh' || flagged ? 'fresh' : 'fading', S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)} tabindex="0"
       onKeyDown=${(e) => { if (e.key === 'Enter') openMessage(m); }}>
       <${Avatar} addr=${m.from.addr} name=${m.from.name} acct=${m.acct} />
       <div class="attn-main">
@@ -161,8 +164,10 @@ function AttentionRow({ m }) {
       <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
         ${m.kind === 'new' && html`<button class="btn small" title="Treat this sender as an important person" onClick=${() => setSenderKind(m.from.addr, 'important')}>Important</button>`}
         ${m.topic && !flagged && html`<button class="btn small" title="Stop flagging this topic" onClick=${() => { toggleQuiet(m.topic); toast('This topic will not be flagged again', { action: 'Undo', onAction: () => { toggleQuiet(m.topic); set({ toast: null }); } }); }}>Never flag topic</button>`}
+        <button class="btn small" title="Move to the top and keep it from fading (b)" onClick=${() => bump(m)}>Bump</button>
         <button class="btn small" onClick=${() => ack(m)}>${flagged ? 'Unflag' : 'Dismiss'}</button>
       </span>
+      ${S.user.bumped[m.key] && html`<span class="bumped" title=${`Bumped ${fullDate(S.user.bumped[m.key])}`}>↑</span>`}
       <span class="age" title=${fullDate(m.ts)}>${ago(m.ts, cutoffs().now)}</span>
     </div>`;
 }
@@ -273,8 +278,8 @@ function Home() {
   const period = user.settings.period;
 
   const needs = model.needsReply.filter(passes);
-  const needsCurrent = needs.filter((m) => m.ts >= c.far);
-  const needsOld = needs.filter((m) => m.ts < c.far);
+  const needsCurrent = needs.filter((m) => m.eff >= c.far);
+  const needsOld = needs.filter((m) => m.eff < c.far);
   const attention = model.attention.filter(passes);
 
   const rows = useMemo(() => {
@@ -358,6 +363,12 @@ function onGlobalKey(e) {
     r: () => target && startReply(target, 'reply'),
     a: () => target && startReply(target, 'replyAll'),
     f: () => target && startReply(target, 'forward'),
+    b: () => {
+      if (!target) return;
+      const waiting = S.model.needsReply.find((m) => m.acct === S.open.acct && m.threadId === S.open.threadId);
+      const item = waiting || (S.model.attention.includes(target) ? target : null);
+      if (item) bump(item);
+    },
     e: () => {
       if (!target) return;
       const waiting = S.model.needsReply.find((m) => m.acct === S.open.acct && m.threadId === S.open.threadId);

@@ -23,6 +23,25 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     assert.deepStrictEqual(names, ['Priya Raman', 'Helen Rowan', 'Marcus Oyelaran', 'Dana Whitfield']);
   });
 
+  await step('bump moves an item to the top and stops it fading; undo restores', async () => {
+    const who = () => page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
+    const row = page.locator('section[aria-label="Needs reply"] .row', { hasText: 'Dana Whitfield' });
+    assert.ok(await row.evaluate((el) => el.classList.contains('fading')));
+    await row.hover(); await row.locator('text=Bump').click();
+    assert.equal((await who())[0], 'Dana Whitfield');
+    const top = page.locator('section[aria-label="Needs reply"] .row').first();
+    assert.ok(await top.evaluate((el) => el.classList.contains('fresh')));
+    assert.match(await top.locator('.age').textContent(), /waiting 9d/);
+    await page.screenshot({ path: `${SP}/bump.png` });
+    await page.click('.toast >> text=Undo');
+    assert.equal((await who())[3], 'Dana Whitfield');
+    const a = page.locator('section[aria-label="Attention"] .row').last();
+    const subject = await a.locator('.subj').textContent();
+    await a.hover(); await a.locator('text=Bump').click();
+    assert.equal(await page.locator('section[aria-label="Attention"] .row').first().locator('.subj').textContent(), subject);
+    await page.click('.toast >> text=Undo');
+  });
+
   await step('open thread, body renders in sandboxed frame', async () => {
     await page.click('text=Marcus Oyelaran');
     await page.waitForSelector('.reader iframe');

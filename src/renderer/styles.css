@@ -114,6 +114,7 @@ a { color: var(--accent); }
 .row .snip { color: var(--muted); }
 .row .age { flex: none; width: 56px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .row .wait { color: var(--warn); }
+.row .bumped { flex: none; color: var(--accent); font-weight: 700; font-size: 12px; }
 .row-actions { display: none; gap: 4px; flex: none; }
 .row:hover .row-actions, .row:focus-within .row-actions { display: flex; }
 .path { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

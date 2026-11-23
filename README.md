@@ -48,6 +48,8 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Faces and colours.** People are circles and organisations are rounded squares. A person shows their contact photo when your Google contacts have one, otherwise their initials. A notification channel shows its organisation's site icon, otherwise its initial. Every organisation gets its own colour, used for its name chip, its icon ring and its marker in the filter tree; the organisations you hear from most are guaranteed different colours. People at a company share its colour, while people on public mailboxes (gmail.com and similar) each get their own. Colours never change once assigned. Icons are fetched from Google's favicon service and cached; photos and icons can be turned off in Settings.
 
+**Bump.** Any item in Needs reply or Attention can be bumped (row button, reader button, or `b`). It jumps to the top, and its bump date replaces its received date for ordering and fading, so it stays on the list while untouched items slip away. Bump again to keep it there. The age shown is still the real one, with an ↑ marker.
+
 **Fading.** Mail is at full strength for 7 days, dimmed until 30 days, then leaves the home view and lives on in Search. Both cutoffs are settings.
 
 **Filters.** Account tags and the org / channel / topic tree in the sidebar are multi-select and filter every view.
@@ -65,6 +67,7 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 | `g` | Focus (home) |
 | `,` | Settings |
 | `r` / `a` / `f` | Reply / reply all / forward the open conversation |
+| `b` | Bump the open conversation to the top of its list |
 | `e` | Dismiss or mark no reply needed, and close |
 | `Esc` | Close reader or dialog |
 | `Ctrl/⌘ + Enter` | Send |

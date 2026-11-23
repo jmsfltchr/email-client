@@ -43,6 +43,7 @@ export function defaultState() {
     flagged: {}, // message key -> ts (manually escalated)
     acked: {}, // message key -> true (attention dismissed)
     done: {}, // message key -> true (needs-reply dismissed)
+    bumped: {}, // message key -> ts of the last bump; stands in for the date when ordering and fading
     orgColor: {}, // root domain -> palette index
   };
 }
@@ -327,7 +328,8 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
   const kwRe = keywordRegex(st.keywords);
   const topics = new Map();
   for (const s of senders.values()) {
-    for (const m of s.msgs) { m.kind = s.kind; m.root = s.root; m.topic = null; m.reasons = null; }
+    // eff: the date used for ordering and fading in Needs reply and Attention (last bump, else received).
+    for (const m of s.msgs) { m.kind = s.kind; m.root = s.root; m.topic = null; m.reasons = null; m.eff = state.bumped[m.key] || m.ts; }
     if (s.kind !== 'channel') continue;
     const scoped = rules.filter((r) => r.scope === '*' || r.scope === s.addr || r.scope === s.root);
     for (const [suffix, t] of clusterChannel(s.msgs, scoped, !!state.senderTopic[s.addr])) {
@@ -351,7 +353,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
   for (const s of senders.values()) {
     if (s.kind === 'important') continue;
     for (const m of s.msgs) {
-      if (m.ts < farCut) continue;
+      if (m.eff < farCut) continue;
       if (s.kind === 'new') { addReason(m, 'new-sender', 'Unfamiliar sender'); continue; }
       if (state.quietTopics[m.topic]) continue;
       const hit = kwRe && (kwRe.exec(m.subject) || kwRe.exec(m.snippet || ''));
@@ -374,7 +376,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
     if (flagged) { m.reasons = [{ type: 'flagged', text: 'Flagged by you' }, ...(m.reasons || [])]; attention.push(m); }
     else if (m.reasons && !state.acked[m.key]) attention.push(m);
   }
-  attention.sort((a, b) => b.ts - a.ts);
+  attention.sort((a, b) => b.eff - a.eff);
 
   // --- threads + needs reply
   const threads = new Map();
@@ -394,7 +396,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
     }
     if (cand && !state.done[cand.key]) needsReply.push(cand);
   }
-  needsReply.sort((a, b) => b.ts - a.ts);
+  needsReply.sort((a, b) => b.eff - a.eff);
 
   return { senders, topics, threads, needsReply, attention, now };
 }

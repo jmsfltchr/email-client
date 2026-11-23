@@ -196,3 +196,31 @@ test('a stray or automatic reply does not make a mass sender important', () => {
   assert.equal(k(sent({ to: ['ann@a.com'] })), 'important', 'one real reply to a person is enough');
   assert.ok(isBroadcast({ addr: 'noreply@svc.com', bulk: false, count: 3 }, 1) && !isBroadcast({ addr: 'ann@a.com', bulk: false, count: 300 }, 1));
 });
+
+test('bump: the bump date replaces the received date for ordering and fading', () => {
+  const sent = mk({ from: 'me@x.com', sent: true, to: ['ann@a.com', 'bob@b.com', 'cy@c.com'], subject: 'x', ts: NOW - 400 * DAY });
+  const ann = mk({ from: 'ann@a.com', subject: 'old question', ts: NOW - 45 * DAY });
+  const bob = mk({ from: 'bob@b.com', subject: 'recent', ts: NOW - 2 * DAY });
+  const cy = mk({ from: 'cy@c.com', subject: 'newest', ts: NOW - DAY });
+  const alerts = Array.from({ length: 8 }, (_, i) => mk({ from: 'alerts@svc.com', subject: 'Daily report', ts: NOW - (i + 1) * DAY }));
+  const oldAlarm = mk({ from: 'alerts@svc.com', subject: 'Certificate expired', ts: NOW - 40 * DAY });
+  const newAlarm = mk({ from: 'alerts@svc.com', subject: 'Disk quota overdue', ts: NOW - 3 * DAY });
+  const msgs = [sent, ann, bob, cy, ...alerts, oldAlarm, newAlarm];
+
+  let model = buildModel(msgs, defaultState(), opts);
+  assert.deepEqual(model.needsReply.map((m) => m.subject), ['newest', 'recent', 'old question']);
+  assert.deepEqual(model.attention.map((m) => m.subject), ['Disk quota overdue'], 'the 40-day-old alarm has slipped off');
+
+  const st = defaultState();
+  st.bumped[ann.key] = NOW - 3600000;
+  st.bumped[oldAlarm.key] = NOW - 7200000;
+  model = buildModel(msgs, st, opts);
+  assert.deepEqual(model.needsReply.map((m) => m.subject), ['old question', 'newest', 'recent']);
+  assert.equal(ann.eff, NOW - 3600000);
+  assert.equal(ann.ts, NOW - 45 * DAY, 'the real date is untouched');
+  assert.deepEqual(model.attention.map((m) => m.subject), ['Certificate expired', 'Disk quota overdue'], 'bumping keeps it on the list');
+
+  // a bump ages like any date: 31 days later it has slipped off again
+  const later = buildModel(msgs, st, { ...opts, now: NOW + 31 * DAY });
+  assert.ok(!later.attention.includes(oldAlarm));
+});

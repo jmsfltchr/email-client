@@ -125,9 +125,18 @@ export function toast(text, { action, onAction, ms = 4000 } = {}) {
   return t;
 }
 
-export const markDone = (m) => mutate((u) => { u.done[m.key] = true; });
+export const markDone = (m) => mutate((u) => { u.done[m.key] = true; delete u.bumped[m.key]; });
 export const undoDone = (m) => mutate((u) => { delete u.done[m.key]; });
-export const ack = (m) => mutate((u) => { u.acked[m.key] = true; delete u.flagged[m.key]; });
+export const ack = (m) => mutate((u) => { u.acked[m.key] = true; delete u.flagged[m.key]; delete u.bumped[m.key]; });
+/** Move a message back to the top of its list, as if it had just arrived. */
+export function bump(m) {
+  const before = S.user.bumped[m.key];
+  mutate((u) => { u.bumped[m.key] = Date.now(); });
+  toast('Bumped to the top', {
+    action: 'Undo',
+    onAction: () => { mutate((u) => { if (before) u.bumped[m.key] = before; else delete u.bumped[m.key]; }); set({ toast: null }); },
+  });
+}
 export const toggleFlag = (m) => mutate((u) => {
   if (u.flagged[m.key]) delete u.flagged[m.key];
   else { u.flagged[m.key] = Date.now(); delete u.acked[m.key]; }
