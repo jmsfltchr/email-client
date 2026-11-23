@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, powerMonitor, nativeTheme, session } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, powerMonitor, nativeTheme, session, nativeImage } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -320,6 +320,7 @@ const handlers = {
 
 // ------------------------------------------------------------ app
 
+const APP_ICON = path.join(__dirname, '../assets/icon.png');
 const WEB_PARTITION = 'persist:stillmail-web';
 const isWebUrl = (url) => /^https?:\/\//i.test(url);
 
@@ -341,6 +342,7 @@ function createWindow() {
     minWidth: 980,
     minHeight: 600,
     title: 'Stillmail',
+    icon: APP_ICON, // window and taskbar icon on Windows and Linux
     backgroundColor: '#16171a',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, spellcheck: true, webviewTag: true },
   });
@@ -368,6 +370,8 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', () => handlers.focusWindow());
   app.whenReady().then(() => {
+    // Run from source (npm start) the Dock would show Electron's icon; a packaged app has its own.
+    if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(nativeImage.createFromPath(APP_ICON));
     setupWebPane();
     nativeTheme.themeSource = 'dark'; // native menus, dialogs and form controls match the UI
     config = readJson('config.json', config);

@@ -11,6 +11,7 @@
     "demo": "electron . --demo",
     "test": "node --test",
     "e2e": "node scripts/e2e.cjs",
+    "icons": "node scripts/make-icons.cjs",
     "dist": "npx electron-builder"
   },
   "build": {

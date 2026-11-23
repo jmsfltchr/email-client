@@ -105,7 +105,7 @@ src/main      Electron main process: OAuth, Gmail REST client, sync, persistence
 src/renderer  UI (Preact + htm, no build step) and the demo mailbox
 ```
 
-`npm run dist` packages an installer with electron-builder.
+`npm run dist` packages an installer with electron-builder. The app icon lives in `assets/icon.svg`; `npm run icons` regenerates the platform files in `build/` and `src/assets/` from it (needs Playwright).
 
 ## Known limits
 
