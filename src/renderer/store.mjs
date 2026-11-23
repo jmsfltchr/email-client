@@ -20,6 +20,7 @@ export const S = {
   acctSel: new Set(), // empty = all accounts
   tagSel: new Set(), // 'o:root' | 'c:addr' | 't:topicKey'; empty = everything
   open: null, // {acct, threadId, key}
+  finding: false, // find-in-conversation bar open
   web: null, // {url, n} when the browser pane is open beside the reader
   canEmbed: false, // true inside Electron, where <webview> exists
   compose: null,
@@ -118,7 +119,7 @@ export const accountOf = (email) => S.accounts.find((a) => a.email === email) ||
 // ------------------------------------------------------------ actions
 
 export function openMessage(m) { set({ open: { acct: m.acct, threadId: m.threadId, key: m.key } }); }
-export function closeReader() { set({ open: null, web: null }); }
+export function closeReader() { set({ open: null, web: null, finding: false }); }
 
 export function toast(text, { action, onAction, ms = 4000 } = {}) {
   const t = { text, action, onAction, id: Math.random() };

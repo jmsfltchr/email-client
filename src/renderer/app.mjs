@@ -362,8 +362,15 @@ function onGlobalKey(e) {
   if (e.key === 'Escape') {
     if (S.ruleEditor) set({ ruleEditor: null });
     else if (typing) e.target.blur();
+    else if (S.finding) set({ finding: false });
     else if (S.web) closeWeb();
     else if (S.open) closeReader();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && !S.compose && !S.ruleEditor) {
+    e.preventDefault();
+    if (S.open && S.view !== 'settings') { set({ finding: true }); document.querySelector('.find input')?.select(); }
+    else set({ view: 'search' });
     return;
   }
   if (typing || e.metaKey || e.ctrlKey || e.altKey || S.compose || S.ruleEditor) return;

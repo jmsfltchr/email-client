@@ -1,5 +1,5 @@
 import { html, useState, useEffect, useMemo, useRef, cx, ago, fullDate, bytes, displayName, sanitizeEmailHtml, textToHtml } from './util.mjs';
-import { S, api, closeReader, markDone, ack, bump, toggleFlag, setSenderKind, toggleQuiet, toast, accountOf, set } from './store.mjs';
+import { S, api, closeReader, markDone, ack, bump, toggleFlag, setSenderKind, toggleQuiet, toast, accountOf, set, setSetting } from './store.mjs';
 import { startReply, newDraft } from './compose.mjs';
 import { openLink } from './webpane.mjs';
 import { baseSubject } from '../core/classify.mjs';
@@ -16,19 +16,29 @@ function loadBody(m) {
   return bodyCache.get(m.key);
 }
 
-const FRAME_CSS = 'html,body{margin:0;padding:0}body{font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#222;background:#fff;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}blockquote{margin:0 0 0 6px;padding-left:12px;border-left:2px solid #ddd;color:#555}';
+const FRAME_CSS = 'html,body{margin:0;padding:0}body{font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;color:#222;background:#fff;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}blockquote{margin:0 0 0 6px;padding-left:12px;border-left:2px solid #ddd;color:#555}'
+  + '.sm-quote[hidden]{display:none!important}.sm-quote-toggle{display:inline-block;margin:10px 0 4px;padding:0 10px;border-radius:9px;background:#e6e6e6;color:#555;font:700 13px/17px system-ui,sans-serif;letter-spacing:1px;cursor:pointer;user-select:none}.sm-quote-toggle:hover{background:#d6d6d6}'
+  + '::highlight(find){background:#ffe58a;color:#111}::highlight(find-current){background:#ff9632;color:#111}';
 
-// Plain-text mail follows the app's dark theme; HTML mail keeps the white page it was designed for.
-const PLAIN_CSS = 'html{color-scheme:dark}body{color:#e9e7e1;background:#1e2024}a{color:#7fd1b6}blockquote{border-color:#3a3d43;color:#b9b6ad}';
+// Dark reading. Plain text is simply drawn light-on-dark. HTML mail is designed for a white page, so
+// it is colour-inverted as a whole (hue kept), with pictures flipped back to their real colours.
+const PLAIN_DARK_CSS = 'html{color-scheme:dark}body{color:#e9e7e1;background:#1e2024}a{color:#7fd1b6}blockquote{border-color:#3a3d43;color:#b9b6ad}.sm-quote-toggle{background:#33363c;color:#b9b6ad}.sm-quote-toggle:hover{background:#40444b}';
+const HTML_DARK_CSS = 'html{background:#e1dfdb;filter:invert(1) hue-rotate(180deg)}body{background:transparent}img,video,picture>source{filter:invert(1) hue-rotate(180deg)}'
+  + '::highlight(find){background:#4d4200;color:#fff}::highlight(find-current){background:#8a3d00;color:#fff}';
+
+const frameReady = new Set(); // listeners told whenever a message body (re)renders
 
 function EmailBody({ full }) {
   const [images, setImages] = useState(S.user.settings.loadImages);
   const frame = useRef();
+  const dark = S.user.settings.readerTheme !== 'light';
   const clean = useMemo(() => (full.html ? sanitizeEmailHtml(full.html) : { html: textToHtml(full.text || ''), remoteImages: false }), [full]);
   const srcdoc = useMemo(() => {
     const csp = `default-src 'none'; style-src 'unsafe-inline'; img-src data: ${images ? 'https: http:' : ''}; font-src data:`;
-    return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}${full.html ? '' : PLAIN_CSS}</style></head><body>${clean.html}</body></html>`;
-  }, [clean, images]);
+    const theme = !dark ? '' : full.html ? HTML_DARK_CSS : PLAIN_DARK_CSS;
+    // Theme rules come last so that they win over the email's own styles.
+    return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${clean.html}<style>${theme}</style></body></html>`;
+  }, [clean, images, dark]);
 
   const onLoad = () => {
     const el = frame.current;
@@ -38,6 +48,12 @@ function EmailBody({ full }) {
     fit();
     new ResizeObserver(fit).observe(doc.body);
     doc.addEventListener('click', (e) => {
+      const toggle = e.target.closest?.('.sm-quote-toggle');
+      if (toggle) {
+        const quote = toggle.nextElementSibling;
+        if (quote?.classList.contains('sm-quote')) quote.toggleAttribute('hidden');
+        return;
+      }
       const a = e.target.closest?.('a[href]');
       if (!a) return;
       e.preventDefault();
@@ -45,6 +61,12 @@ function EmailBody({ full }) {
       if (openLink(a.href, e)) return;
       if (/^mailto:/i.test(a.href)) newDraft({ to: decodeURIComponent(a.href.slice(7).split('?')[0]) });
     });
+    // Keys pressed while the message itself has focus still reach the app (Cmd+F, Esc, shortcuts).
+    doc.addEventListener('keydown', (e) => {
+      const copy = new KeyboardEvent('keydown', { key: e.key, code: e.code, metaKey: e.metaKey, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, bubbles: true, cancelable: true });
+      if (!document.body.dispatchEvent(copy)) e.preventDefault();
+    });
+    frameReady.forEach((fn) => fn());
   };
 
   return html`
@@ -52,8 +74,92 @@ function EmailBody({ full }) {
       <div class="img-note">Remote images are hidden to block tracking.
         <button class="btn small" onClick=${() => setImages(true)}>Show images</button>
       </div>`}
-    <div class=${full.html ? 'paper' : 'paper plain'}>
+    <div class=${cx('paper', dark && 'dark')}>
       <iframe ref=${frame} sandbox="allow-same-origin" srcdoc=${srcdoc} onLoad=${onLoad} title="Message body"></iframe>
+    </div>`;
+}
+
+// ------------------------------------------------------------ find in message
+
+/** Highlight every occurrence of `query` in the open message bodies. Returns the matches in reading order. */
+function findInFrames(query) {
+  const matches = [];
+  const q = query.toLowerCase();
+  for (const el of document.querySelectorAll('.reader-body iframe')) {
+    const doc = el.contentDocument, win = el.contentWindow;
+    if (!doc?.body || !win?.CSS?.highlights) continue;
+    win.CSS.highlights.delete('find');
+    win.CSS.highlights.delete('find-current');
+    if (!q) continue;
+    const ranges = [];
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement?.closest('style,script,.sm-quote-toggle') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node.data.toLowerCase();
+      for (let i = text.indexOf(q); i >= 0; i = text.indexOf(q, i + q.length)) {
+        const r = doc.createRange();
+        r.setStart(node, i);
+        r.setEnd(node, i + q.length);
+        ranges.push(r);
+        matches.push({ el, win, range: r });
+      }
+    }
+    if (ranges.length) win.CSS.highlights.set('find', new win.Highlight(...ranges));
+  }
+  return matches;
+}
+
+function showMatch(matches, index) {
+  for (const w of new Set(matches.map((m) => m.win))) w.CSS.highlights.delete('find-current');
+  const m = matches[index];
+  if (!m) return;
+  m.win.CSS.highlights.set('find-current', new m.win.Highlight(m.range));
+  m.range.startContainer.parentElement?.closest('.sm-quote[hidden]')?.removeAttribute('hidden'); // unfold earlier messages if the match is in them
+  requestAnimationFrame(() => {
+    const box = document.querySelector('.reader-body');
+    const y = m.el.getBoundingClientRect().top + m.range.getBoundingClientRect().top;
+    const view = box.getBoundingClientRect();
+    if (y < view.top + 40 || y > view.bottom - 60) box.scrollBy({ top: y - (view.top + view.height / 3) });
+  });
+}
+
+function FindBar({ onClose }) {
+  const [q, setQ] = useState('');
+  const [index, setIndex] = useState(0);
+  const [matches, setMatches] = useState([]);
+  const input = useRef();
+  const run = (query, keep) => {
+    const found = findInFrames(query);
+    const i = keep ? Math.min(keep.i, Math.max(0, found.length - 1)) : 0;
+    setMatches(found);
+    setIndex(i);
+    showMatch(found, i);
+  };
+  const latest = useRef({ q, i: index });
+  latest.current = { q, i: index };
+  useEffect(() => {
+    input.current.focus();
+    const again = () => run(latest.current.q, latest.current); // a body finished loading or was re-themed
+    frameReady.add(again);
+    return () => { frameReady.delete(again); findInFrames(''); };
+  }, []);
+  const step = (d) => {
+    if (!matches.length) return;
+    const i = (index + d + matches.length) % matches.length;
+    setIndex(i);
+    showMatch(matches, i);
+  };
+  return html`
+    <div class="find" role="search">
+      <input class="input" ref=${input} value=${q} placeholder="Find in this conversation" aria-label="Find in this conversation"
+        onInput=${(e) => { setQ(e.target.value); run(e.target.value); }}
+        onKeyDown=${(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); step(e.shiftKey ? -1 : 1); }
+          else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
+        }} />
+      <span class="find-n" aria-live="polite">${q ? (matches.length ? `${index + 1} of ${matches.length}` : 'No matches') : ''}</span>
+      <button class="btn ghost small" disabled=${!matches.length} onClick=${() => step(-1)} title="Previous (Shift+Enter)" aria-label="Previous match">↑</button>
+      <button class="btn ghost small" disabled=${!matches.length} onClick=${() => step(1)} title="Next (Enter)" aria-label="Next match">↓</button>
+      <button class="btn ghost small" onClick=${onClose} title="Close (Esc)" aria-label="Close find">✕</button>
     </div>`;
 }
 
@@ -105,6 +211,11 @@ export function Reader() {
   const thread = model.threads.get(`${open.acct}:${open.threadId}`);
   const [expanded, setExpanded] = useState(() => new Set([open.key]));
   useEffect(() => { setExpanded(new Set([open.key])); }, [open.key]);
+  // Cmd/Ctrl+F: search the whole conversation, so every message is opened first.
+  useEffect(() => {
+    if (S.finding && thread) setExpanded(new Set(thread.map((m) => m.key)));
+  }, [S.finding, open.threadId]);
+  const dark = user.settings.readerTheme !== 'light';
   if (!thread) return html`<aside class="reader"><div class="empty">This conversation is no longer available. <button class="btn small" onClick=${closeReader}>Close</button></div></aside>`;
 
   const focus = thread.find((m) => m.key === open.key) || thread[thread.length - 1];
@@ -123,8 +234,14 @@ export function Reader() {
       <div class="reader-h">
         <div class="reader-top">
           <h1>${baseSubject(last.subject) || '(no subject)'}</h1>
+          <span class="seg" role="group" aria-label="Reading theme" title="How message bodies are shown">
+            <button class=${cx(!dark && 'on')} aria-pressed=${!dark} onClick=${() => setSetting('readerTheme', 'light')}>Light</button>
+            <button class=${cx(dark && 'on')} aria-pressed=${dark} onClick=${() => setSetting('readerTheme', 'dark')}>Dark</button>
+          </span>
+          <button class="btn ghost small" onClick=${() => set({ finding: !S.finding })} title="Find in this conversation (⌘F / Ctrl+F)" aria-label="Find in this conversation">Find</button>
           <button class="btn ghost small" onClick=${closeReader} title="Close (Esc)">✕</button>
         </div>
+        ${S.finding && html`<${FindBar} key=${open.threadId} onClose=${() => set({ finding: false })} />`}
         <div class="reader-actions">
           <button class="btn primary" onClick=${() => startReply(target, 'reply')} title="Reply (r)">Reply</button>
           <button class="btn" onClick=${() => startReply(target, 'replyAll')} title="Reply all (a)">Reply all</button>

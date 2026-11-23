@@ -54,6 +54,8 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Links.** Clicking a link in an email opens the page in a browser pane to the right of the message, with back, forward, reload and *Open in default browser*. ⌘-click (Ctrl-click on Windows and Linux) sends a link straight to your default browser instead. The pane is an isolated web page with its own cookies; it has no access to your mail and no camera, microphone, location or notification permissions. `mailto:` links start a new message.
 
+**Reading.** A Light / Dark switch at the top of the reader sets how message bodies are shown, and is remembered. Earlier messages quoted inside a reply are folded behind a ••• button so each message shows only what is new; forwards are left open. ⌘F (Ctrl+F) finds text across the open conversation, with Enter and Shift+Enter to step through matches.
+
 **Fading.** Mail is at full strength for 7 days, dimmed until 30 days, then leaves the home view and lives on in Search. Both cutoffs are settings.
 
 **Filters.** Account tags and the org / channel / topic tree in the sidebar are multi-select and filter every view.
@@ -73,6 +75,7 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 | `r` / `a` / `f` | Reply / reply all / forward the open conversation |
 | `b` | Bump the open conversation to the top of its list |
 | `e` | Dismiss or mark no reply needed, and close |
+| `⌘F` / `Ctrl+F` | Find in the open conversation (otherwise go to Search) |
 | `Esc` | Close reader or dialog |
 | `Ctrl/⌘ + Enter` | Send |
 

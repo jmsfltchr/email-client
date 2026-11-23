@@ -267,3 +267,21 @@ test('brand colour: dominant hue that is not white, black or grey', () => {
   assert.deepEqual(analyseIcon(Uint8ClampedArray.from([...px(400, 250, 250, 250), ...px(624, 0, 0, 0, 0)])), { color: null, invert: false });
   assert.deepEqual(analyseIcon(new Uint8ClampedArray(64)), { color: null, invert: false });
 });
+
+import { splitQuotedText } from '../src/core/quotes.mjs';
+
+test('quoted history in plain-text replies is separated from the new text', () => {
+  const gmail = 'Sounds good.\n\nMarcus\n\nOn Fri, 13 Nov 2026 at 09:12, Alex <a@x.com> wrote:\n> Tuesday works.\n>\n> On Thu, Marcus wrote:\n>> Are you free?';
+  assert.deepEqual(splitQuotedText(gmail), { head: 'Sounds good.\n\nMarcus', quoted: gmail.slice(gmail.indexOf('On Fri')) });
+  assert.equal(splitQuotedText('Yes.\n\nOn Fri, 13 Nov 2026 at 09:12, Alexander Longname\n<a@x.com> wrote:\n> q').head, 'Yes.');
+  assert.equal(splitQuotedText('Agreed.\n\n-----Original Message-----\nFrom: A\nSent: Monday\n\nold').head, 'Agreed.');
+  const outlook = splitQuotedText('Agreed.\n\n________________________________\nFrom: Ann <a@x.com>\nSent: 12 November 2026 10:00\nTo: Me\nSubject: Re: x\n\nold text');
+  assert.equal(outlook.head, 'Agreed.');
+  assert.match(outlook.quoted, /^_{10,}\nFrom: Ann/);
+  assert.equal(splitQuotedText('Thanks!\n\n> earlier line\n> another').head, 'Thanks!');
+  // not folded: nothing quoted, inline replies, forwards, or a message that is only a quote
+  assert.equal(splitQuotedText('Just a normal message.\nFrom: here to there, see you.'), null);
+  assert.equal(splitQuotedText('> you asked this\nMy answer is yes.\n> and this\nAlso yes.'), null);
+  assert.equal(splitQuotedText('FYI\n\n---------- Forwarded message ---------\nFrom: A <a@x.com>\nDate: Mon\nSubject: x\n\nbody'), null);
+  assert.equal(splitQuotedText('On Mon, A wrote:\n> everything is quoted'), null);
+});

@@ -1,3 +1,5 @@
+import { splitQuotedText } from '../core/quotes.mjs';
+
 export { html, render, useState, useEffect, useRef, useMemo, useCallback } from '../../node_modules/htm/preact/standalone.module.js';
 
 const MIN = 60000, HOUR = 3600000, DAY = 86400000;
@@ -54,6 +56,7 @@ export function sanitizeEmailHtml(src) {
   if (/url\(\s*['"]?\s*(https?:)?\/\//i.test(src)) remoteImages = true;
   const styles = [...doc.querySelectorAll('style')].map((s) => s.outerHTML).join('');
   doc.body.querySelectorAll('style').forEach((s) => s.remove());
+  collapseQuoted(doc);
   return { html: styles + doc.body.innerHTML, remoteImages };
 }
 
@@ -65,9 +68,38 @@ export function htmlToText(src) {
   return doc.body.textContent.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+const QUOTE_TOGGLE = '<div class="sm-quote-toggle" role="button" title="Show earlier messages">•••</div>';
+
 export function textToHtml(text) {
-  const linked = escapeHtml(text).replace(/\bhttps?:\/\/[^\s<>"]+[^\s<>".,;:!?)]/g, (u) => `<a href="${u}">${u}</a>`);
-  return `<div style="white-space:pre-wrap;font:14px/1.55 system-ui,sans-serif">${linked}</div>`;
+  const block = (t) => {
+    const linked = escapeHtml(t).replace(/\bhttps?:\/\/[^\s<>"]+[^\s<>".,;:!?)]/g, (u) => `<a href="${u}">${u}</a>`);
+    return `<div style="white-space:pre-wrap;font:14px/1.55 system-ui,sans-serif">${linked}</div>`;
+  };
+  const split = splitQuotedText(text);
+  if (!split) return block(text);
+  return `${block(split.head)}${QUOTE_TOGGLE}<div class="sm-quote" hidden>${block(split.quoted)}</div>`;
+}
+
+// Where common mail programs put the earlier messages of a conversation.
+const QUOTE_SEL = '.gmail_quote_container, .gmail_quote, blockquote[type="cite"], .yahoo_quoted, #divRplyFwdMsg, #appendonsend, .moz-cite-prefix, .protonmail_quote, [id^="mail-editor-reference-message"], #reply-intro';
+
+/** Fold quoted earlier correspondence behind a "•••" toggle (the parent page handles the click). */
+function collapseQuoted(doc) {
+  let start = doc.body.querySelector(QUOTE_SEL);
+  if (!start) return;
+  if (/forwarded message/i.test(start.textContent.slice(0, 300))) return; // a forward's content is the message
+  const prev = start.previousElementSibling;
+  if (prev && (prev.tagName === 'HR' || (prev.textContent.length < 300 && /wrote:\s*$/i.test(prev.textContent.trim())))) start = prev;
+  const before = doc.createRange();
+  before.setStart(doc.body, 0);
+  before.setEndBefore(start);
+  if (!before.toString().trim() && !before.cloneContents().querySelector('img')) return; // nothing but the quote: show it
+  const wrap = doc.createElement('div');
+  wrap.className = 'sm-quote';
+  wrap.setAttribute('hidden', '');
+  start.insertAdjacentHTML('beforebegin', QUOTE_TOGGLE);
+  start.parentNode.insertBefore(wrap, start);
+  for (let n = start; n;) { const next = n.nextSibling; wrap.appendChild(n); n = next; }
 }
 
 export function fileToBase64(file) {

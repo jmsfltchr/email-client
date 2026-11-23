@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS = {
   keywords: DEFAULT_KEYWORDS,
   notify: true,
   loadImages: false,
+  readerTheme: 'dark', // how message bodies are shown: 'dark' | 'light'
   senderImages: true, // contact photos and organisation icons
   syncMonths: 12,
 };

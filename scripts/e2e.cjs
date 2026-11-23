@@ -53,6 +53,66 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await shot('reader');
   });
 
+  await step('earlier messages are folded behind an ellipsis', async () => {
+    const body = page.frameLocator('.reader iframe');
+    const old = body.locator('text=Tuesday or Wednesday afternoon both work');
+    assert.equal(await old.isVisible(), false, 'quoted history hidden');
+    await body.locator('.sm-quote-toggle').click();
+    await old.waitFor({ state: 'visible' });
+    await body.locator('.sm-quote-toggle').click();
+    assert.equal(await old.isVisible(), false);
+  });
+
+  await step('ctrl/cmd+F finds text across the conversation', async () => {
+    await page.locator('.reader-h h1').click();
+    await page.keyboard.press('Control+f');
+    await page.waitForSelector('.find input:focus');
+    await page.keyboard.type('wednesday');
+    await page.locator('.find-n', { hasText: '1 of 3' }).waitFor();
+    assert.equal(await page.locator('.reader iframe').count(), 3, 'every message opened for searching');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.locator('.find-n', { hasText: '3 of 3' }).waitFor();
+    const last = page.frameLocator('.reader iframe >> nth=2');
+    await last.locator('text=Tuesday or Wednesday afternoon both work').waitFor({ state: 'visible' });
+    const marks = await page.locator('.reader iframe >> nth=2').evaluate((el) => [el.contentWindow.CSS.highlights.get('find').size, el.contentWindow.CSS.highlights.get('find-current').size]);
+    assert.deepStrictEqual(marks, [2, 1]);
+    await page.screenshot({ path: `${SP}/find.png` });
+    await page.fill('.find input', 'zzzz');
+    await page.locator('.find-n', { hasText: 'No matches' }).waitFor();
+    // the shortcut also works while the message itself has focus
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.find').count(), 0);
+    assert.ok(await page.locator('.reader').isVisible());
+    await last.locator('body').click();
+    await page.keyboard.press('Meta+f');
+    await page.waitForSelector('.find input');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.find').count(), 0);
+    assert.ok(await page.locator('.reader').isVisible());
+  });
+
+  await step('light / dark reading theme, for plain and HTML mail', async () => {
+    const bg = (n) => page.locator(`.reader iframe >> nth=${n}`).evaluate((el) => [getComputedStyle(el.contentDocument.body).backgroundColor, getComputedStyle(el.contentDocument.documentElement).filter]);
+    assert.deepStrictEqual(await bg(2), ['rgb(30, 32, 36)', 'none']);
+    await page.click('[aria-label="Reading theme"] >> text=Light');
+    await page.waitForFunction(() => !document.querySelector('.paper.dark'));
+    await page.waitForFunction(() => getComputedStyle(document.querySelectorAll('.reader iframe')[2].contentDocument.body).backgroundColor === 'rgb(255, 255, 255)');
+    await page.click('[aria-label="Reading theme"] >> text=Dark');
+    await page.waitForSelector('.paper.dark');
+    // HTML mail: inverted page, folded quote
+    await page.click('section[aria-label="Needs reply"] >> text=Priya Raman');
+    const html = page.frameLocator('.reader iframe');
+    await html.locator('text=staffing trade-off').waitFor();
+    assert.equal(await html.locator('text=Draft roadmap attached').isVisible(), false);
+    assert.match((await bg(0))[1], /invert\(1\)/);
+    await page.screenshot({ path: `${SP}/dark-html.png` });
+    await html.locator('.sm-quote-toggle').click();
+    await html.locator('text=Draft roadmap attached').waitFor({ state: 'visible' });
+    await page.click('section[aria-label="Needs reply"] >> text=Marcus Oyelaran');
+    await page.waitForSelector('.reader iframe');
+  });
+
   await step('reply all pre-fills recipients, subject, quote', async () => {
     await page.click('.reader-actions >> text=Reply all');
     await page.waitForSelector('.compose');

@@ -43,22 +43,22 @@ export function generateDemo(now = Date.now()) {
   };
   const convo = (acct, person, subject, turns) => {
     let thread;
-    turns.forEach(([who, ago, body, attachments], i) => {
+    turns.forEach(([who, ago, body, attachments, html], i) => {
       const m = add(acct, who === 'me'
         ? { sent: true, to: [person.addr], subject: i ? `Re: ${subject}` : subject, ago, body, thread }
-        : { from: person, subject: i ? `Re: ${subject}` : subject, ago, body, thread, attachments });
+        : { from: person, subject: i ? `Re: ${subject}` : subject, ago, body, thread, attachments, html });
       thread = m.threadId;
     });
   };
 
   convo(WORK, P.priya, 'Q4 roadmap review', [
     ['me', 9 * DAY, 'Hi Priya,\n\nDraft roadmap attached. Biggest open question is whether we pull the billing migration into Q4.\n\nAlex'],
-    ['them', 5 * HOUR, 'Thanks Alex. I think we should, but I need your call on the staffing trade-off before Friday\'s planning session. Can you send me a yes/no and one paragraph of reasoning?\n\nPriya'],
+    ['them', 5 * HOUR, 'Thanks Alex. I think we should, but I need your call on the staffing trade-off before Friday\'s planning session. Can you send me a yes/no and one paragraph of reasoning?\n\nPriya', undefined, '<div dir="ltr">Thanks Alex. I think we should, but I need your call on the <b>staffing trade-off</b> before Friday\'s planning session. Can you send me a yes/no and one paragraph of reasoning?<br><br>Priya</div><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On Mon, 9 Nov 2026 at 10:02, Alex Rowan &lt;alex@fernhill.example&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">Hi Priya,<br><br>Draft roadmap attached. Biggest open question is whether we pull the billing migration into Q4.<br><br>Alex</blockquote></div>'],
   ]);
   convo(WORK, P.marcus, 'Contract renewal terms', [
     ['them', 6 * DAY, 'Hi Alex, ahead of renewal we would like to discuss moving to annual billing. Are you free next week?\n\nMarcus'],
     ['me', 5.5 * DAY, 'Hi Marcus, yes. Tuesday or Wednesday afternoon both work.\n\nAlex'],
-    ['them', 2 * DAY, 'Wednesday 3pm works. I have attached our proposed terms; could you confirm you are happy with clause 4 before the call?\n\nMarcus', [{ filename: 'Brightwater-renewal-terms.pdf', mime: 'application/pdf', size: 184320 }]],
+    ['them', 2 * DAY, 'Wednesday 3pm works. I have attached our proposed terms; could you confirm you are happy with clause 4 before the call?\n\nMarcus\n\nOn Fri, 13 Nov 2026 at 09:12, Alex Rowan <alex@fernhill.example> wrote:\n> Hi Marcus, yes. Tuesday or Wednesday afternoon both work.\n>\n> Alex\n>\n> On Thu, 12 Nov 2026, Marcus Oyelaran wrote:\n>> Hi Alex, ahead of renewal we would like to discuss moving to annual billing. Are you free next week?', [{ filename: 'Brightwater-renewal-terms.pdf', mime: 'application/pdf', size: 184320 }]],
   ]);
   convo(HOME, P.dana, 'Documents for signature', [
     ['me', 40 * DAY, 'Hi Dana, could you send over the final versions when ready?\n\nAlex'],

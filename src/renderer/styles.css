@@ -188,7 +188,11 @@ a { color: var(--accent); }
 .msg-h .age { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .msg-rcpt { padding: 0 12px 8px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .paper { background: #fff; color: #222; border-radius: 0 0 9px 9px; border-top: 1px solid var(--line); padding: 14px; }
-.paper.plain { background: var(--surface); color: var(--ink); }
+.paper.dark { background: #1e2024; color: var(--ink); }
+.find { display: flex; align-items: center; gap: 4px; margin: 0 0 10px; }
+.find .input { flex: 1; padding: 4px 9px; }
+.find-n { font-size: 12px; color: var(--muted); min-width: 74px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.reader-top .seg { flex: none; }
 .paper iframe { width: 100%; border: 0; display: block; height: 80px; }
 .img-note { background: var(--sunken); font-size: 12px; color: var(--ink-2); padding: 5px 12px; display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--line); }
 .atts { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid var(--line); }
