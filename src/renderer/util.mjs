@@ -41,7 +41,7 @@ export function escapeRe(s) {
 }
 
 /** Strip anything active from email HTML. Parsed inertly; the result is further sandboxed in an iframe. */
-export function sanitizeEmailHtml(src) {
+export function sanitizeEmailHtml(src, { forward = false } = {}) {
   const doc = new DOMParser().parseFromString(src, 'text/html');
   doc.querySelectorAll('script,iframe,frame,frameset,object,embed,applet,form,base,link,meta,noscript,audio,video,source,svg use').forEach((n) => n.remove());
   let remoteImages = false;
@@ -70,7 +70,7 @@ export function sanitizeEmailHtml(src) {
   doc.querySelectorAll('[srcset]').forEach((el) => el.removeAttribute('srcset'));
   const styles = [...doc.querySelectorAll('style')].map((s) => s.outerHTML).join('');
   doc.body.querySelectorAll('style').forEach((s) => s.remove());
-  collapseQuoted(doc);
+  if (!forward) collapseQuoted(doc);
   return { html: styles + doc.body.innerHTML, remoteImages };
 }
 
@@ -94,20 +94,46 @@ export function textToHtml(text) {
   return `${block(split.head)}${QUOTE_TOGGLE}<div class="sm-quote" hidden>${block(split.quoted)}</div>`;
 }
 
+/** Is there any text or picture before `el` inside `within` (default: its parent)? */
+function hasContentBefore(el, within = el.parentElement) {
+  const r = el.ownerDocument.createRange();
+  r.setStart(within, 0);
+  r.setEndBefore(el);
+  return !!r.toString().trim() || !!r.cloneContents().querySelector('img');
+}
+
 // Where common mail programs put the earlier messages of a conversation.
 const QUOTE_SEL = '.gmail_quote_container, .gmail_quote, blockquote[type="cite"], .yahoo_quoted, #divRplyFwdMsg, #appendonsend, .moz-cite-prefix, .protonmail_quote, [id^="mail-editor-reference-message"], #reply-intro';
 
+// Mail programs without quote markup (desktop Outlook above all) start the earlier message with a
+// header block: "From: … Sent: … To: … Subject: …", or an "Original Message" rule, or "On … wrote:".
+const HEADER_BLOCK = /^(From|Von|De|Da|Van):\s.{1,300}?\b(Sent|Date|Gesendet|Datum|Envoyé|Inviato|Enviado|Verzonden):\s.{1,400}?\b(Subject|Betreff|Objet|Oggetto|Asunto|Onderwerp):\s/s;
+const ORIGINAL_RULE = /^-{2,}\s*(Original Message|Ursprüngliche Nachricht|Message d'origine)\s*-{2,}/i;
+const WROTE_LINE = /^On\s.{8,250}\swrote:$/s;
+
+function findQuoteHeader(doc) {
+  for (const el of doc.body.querySelectorAll('div, p, span, td, blockquote, font')) {
+    const text = el.textContent.replace(/\s+/g, ' ').trim();
+    if (text.length < 12 || text.length > 1500) continue; // the header itself, not a container of the whole quote
+    if (HEADER_BLOCK.test(text) || ORIGINAL_RULE.test(text)) return el;
+    if (text.length < 300 && WROTE_LINE.test(text) && el.nextElementSibling?.tagName === 'BLOCKQUOTE') return el;
+  }
+  return null;
+}
+
 /** Fold quoted earlier correspondence behind a "•••" toggle (the parent page handles the click). */
 function collapseQuoted(doc) {
-  let start = doc.body.querySelector(QUOTE_SEL);
+  const marked = doc.body.querySelector(QUOTE_SEL);
+  const header = findQuoteHeader(doc);
+  // whichever comes first in the message
+  let start = marked && header ? (marked.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_PRECEDING ? header : marked) : marked || header;
   if (!start) return;
+  // A header that is the first thing inside its wrappers: fold from the outermost such wrapper.
+  while (start.parentElement && start.parentElement !== doc.body && !hasContentBefore(start)) start = start.parentElement;
   if (/forwarded message/i.test(start.textContent.slice(0, 300))) return; // a forward's content is the message
   const prev = start.previousElementSibling;
   if (prev && (prev.tagName === 'HR' || (prev.textContent.length < 300 && /wrote:\s*$/i.test(prev.textContent.trim())))) start = prev;
-  const before = doc.createRange();
-  before.setStart(doc.body, 0);
-  before.setEndBefore(start);
-  if (!before.toString().trim() && !before.cloneContents().querySelector('img')) return; // nothing but the quote: show it
+  if (!hasContentBefore(start, doc.body)) return; // nothing but the quote: show it
   const wrap = doc.createElement('div');
   wrap.className = 'sm-quote';
   wrap.setAttribute('hidden', '');

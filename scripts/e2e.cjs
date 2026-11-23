@@ -333,6 +333,58 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     } finally { server.closeAllConnections(); server.close(); }
   });
 
+  await step('Outlook-style replies fold from the From/Sent/To/Subject block', async () => {
+    const out = await page.evaluate(async () => {
+      const { sanitizeEmailHtml } = await import('./util.mjs');
+      const outlook = `<div class="WordSection1"><p class="MsoNormal">Hi James</p><p class="MsoNormal">Please do not hesitate to correct/improve.</p><p class="MsoNormal">&nbsp;</p>
+        <div><div style="border:none;border-top:solid #E1E1E1 1.0pt;padding:3.0pt 0cm 0cm 0cm"><p class="MsoNormal"><b>From:</b> James Fletcher &lt;james@x.example&gt; <br><b>Sent:</b> 04 November 2026 15:21<br><b>To:</b> Robert Charlton &lt;robert@y.example&gt;<br><b>Cc:</b> Rupert L &lt;r@z.example&gt;<br><b>Subject:</b> RE: Etchpad user legals</p></div></div>
+        <p class="MsoNormal">&nbsp;</p><p class="MsoNormal">Hi Robert,</p><p class="MsoNormal">Broader question first:</p>
+        <div><div style="border-top:solid #E1E1E1 1.0pt"><p class="MsoNormal"><b>From:</b> Robert<br><b>Sent:</b> 21 October 2026 17:04<br><b>To:</b> James<br><b>Subject:</b> Etchpad user legals</p></div></div><p>Oldest text</p></div>`;
+      const look = (src, opts) => {
+        const d = new DOMParser().parseFromString(sanitizeEmailHtml(src, opts).html, 'text/html');
+        const q = d.querySelector('.sm-quote');
+        return { shown: d.body.textContent.replace(q ? q.textContent : '', '').replace(/\s+/g, ' ').trim(), hidden: q ? q.textContent.replace(/\s+/g, ' ').trim().slice(0, 40) : null, toggles: d.querySelectorAll('.sm-quote-toggle').length };
+      };
+      return {
+        outlook: look(outlook),
+        forward: look(outlook, { forward: true }),
+        onlyQuote: look('<div><b>From:</b> A<br><b>Sent:</b> Monday<br><b>To:</b> B<br><b>Subject:</b> x</div><p>body</p>'),
+        prose: look('<p>From: the station, walk north. Date: any. It is a long way and the subject: of much debate.</p><p>More text here.</p>'),
+        apple: look('<div>Sure, see you then.</div><div>On 3 Nov 2026, at 10:02, Ann Lee &lt;a@x.example&gt; wrote:</div><blockquote>Are you free?</blockquote>'),
+      };
+    });
+    assert.deepStrictEqual(out.outlook, { shown: 'Hi JamesPlease do not hesitate to correct/improve. •••', hidden: 'From: James Fletcher <james@x.example> S', toggles: 1 });
+    assert.equal(out.forward.hidden, null, 'forwards stay open');
+    assert.equal(out.onlyQuote.hidden, null, 'a message that is only a quote stays open');
+    assert.equal(out.prose.hidden, null);
+    assert.deepStrictEqual([out.apple.shown, out.apple.hidden], ['Sure, see you then.•••', 'On 3 Nov 2026, at 10:02, Ann Lee <a@x.ex']);
+  });
+
+  await step('long conversations open on the newest message with earlier ones tucked away', async () => {
+    await page.locator('.col-h', { hasText: 'Domain' }).locator('text=Clear').click();
+    await page.fill('input[aria-label="Filter senders"]', 'sofia');
+    await page.fill('input[aria-label="Search text"]', 'perfect, thank you');
+    await page.locator('.result').first().click();
+    await page.locator('.earlier', { hasText: '6 earlier messages' }).waitFor();
+    assert.equal(await page.locator('.reader .msg').count(), 1);
+    await page.frameLocator('.reader iframe').locator('text=Perfect, thank you').waitFor();
+    await page.click('.earlier');
+    assert.equal(await page.locator('.reader .msg').count(), 7);
+    // from the home view a thread opens on its latest unread message
+    const landed = await page.evaluate(async () => {
+      const { S, openMessage } = await import('./store.mjs');
+      const priya = S.model.needsReply.find((m) => m.from.name === 'Priya Raman');
+      delete S.user.read[priya.key];
+      const first = S.model.threads.get(`${priya.acct}:${priya.threadId}`)[0];
+      openMessage(first);
+      return [S.open.scrollTo === priya.key, S.open.unread.length, S.open.key === first.key];
+    });
+    assert.deepStrictEqual(landed, [true, 1, true]);
+    await page.frameLocator('.reader iframe >> nth=1').locator('text=staffing trade-off').waitFor();
+    assert.equal(await page.locator('.reader iframe').count(), 2, 'the clicked message and the unread one are open');
+    await page.keyboard.press('Escape');
+  });
+
   await step('rule editor defines regex topic', async () => {
     await page.click('.nav >> text=Focus');
     await page.keyboard.press('Escape');

@@ -29,6 +29,9 @@ const HTML_DARK_CSS = 'html{background:#e1dfdb;filter:invert(1) hue-rotate(180de
 // While remote images are held back, leave no broken-picture icons behind.
 const BLOCKED_CSS = 'img[src^="http"]{display:none!important}';
 
+let userMovedAt = 0; // last time the user scrolled or clicked in the reader, including inside a message
+const userMoved = () => { userMovedAt = Date.now(); };
+
 const frameReady = new Set(); // listeners told whenever a message body (re)renders
 
 function EmailBody({ full, m }) {
@@ -39,7 +42,9 @@ function EmailBody({ full, m }) {
   const setImages = setShown;
   const frame = useRef();
   const dark = S.user.settings.readerTheme !== 'light';
-  const clean = useMemo(() => (full.html ? sanitizeEmailHtml(full.html) : { html: textToHtml(full.text || ''), remoteImages: false }), [full]);
+  // A forward's quoted part is the message itself; a reply's is history to fold away.
+  const forward = /^\s*(fwd?|wg|tr|i)\s*:/i.test(m.subject || '');
+  const clean = useMemo(() => (full.html ? sanitizeEmailHtml(full.html, { forward }) : { html: textToHtml(full.text || ''), remoteImages: false }), [full]);
   const srcdoc = useMemo(() => {
     const csp = `default-src 'none'; style-src 'unsafe-inline'; img-src data: ${images ? 'https: http:' : ''}; font-src data:`;
     const theme = (!dark ? '' : full.html ? HTML_DARK_CSS : PLAIN_DARK_CSS) + (images ? '' : BLOCKED_CSS);
@@ -68,6 +73,8 @@ function EmailBody({ full, m }) {
       if (openLink(a.href, e)) return;
       if (/^mailto:/i.test(a.href)) newDraft({ to: decodeURIComponent(a.href.slice(7).split('?')[0]) });
     });
+    doc.addEventListener('wheel', userMoved, { passive: true });
+    doc.addEventListener('pointerdown', userMoved);
     // Keys pressed while the message itself has focus still reach the app (Cmd+F, Esc, shortcuts).
     doc.addEventListener('keydown', (e) => {
       const copy = new KeyboardEvent('keydown', { key: e.key, code: e.code, metaKey: e.metaKey, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, bubbles: true, cancelable: true });
@@ -189,7 +196,7 @@ function MessageCard({ m, open, onToggle }) {
     } catch (e) { toast(`Could not save: ${e.message}`); }
   };
   return html`
-    <div class="msg">
+    <div class="msg" data-key=${m.key}>
       <div class="msg-h" onClick=${onToggle}>
         <${Avatar} addr=${m.from.addr} name=${m.from.name} />
         <span class="from">${m.kind === 'me' ? 'You' : displayName(m.from)}</span>
@@ -217,8 +224,26 @@ function MessageCard({ m, open, onToggle }) {
 export function Reader() {
   const { open, model, user } = S;
   const thread = model.threads.get(`${open.acct}:${open.threadId}`);
-  const [expanded, setExpanded] = useState(() => new Set([open.key]));
-  useEffect(() => { setExpanded(new Set([open.key])); }, [open.key]);
+  // Open on what is new: the message you clicked plus anything unread, scrolled to the latest of them.
+  const initial = () => new Set([open.key, ...(open.unread || [])]);
+  const [expanded, setExpanded] = useState(initial);
+  const [showEarlier, setShowEarlier] = useState(false);
+  const body = useRef();
+  const pin = useRef(null); // {key, until}: keep this message at the top while bodies above it load
+  const settle = () => {
+    const p = pin.current;
+    if (!p || Date.now() > p.until || userMovedAt > p.since || !body.current) return;
+    const card = [...body.current.querySelectorAll('.msg')].find((el) => el.dataset.key === p.key);
+    if (card) body.current.scrollTop += card.getBoundingClientRect().top - body.current.getBoundingClientRect().top - 12;
+  };
+  useEffect(() => {
+    setExpanded(initial());
+    setShowEarlier(false);
+    pin.current = { key: open.scrollTo || open.key, since: Date.now(), until: Date.now() + 4000 };
+    frameReady.add(settle);
+    const t = setTimeout(settle, 0);
+    return () => { frameReady.delete(settle); clearTimeout(t); };
+  }, [open.key, open.n]);
   // Cmd/Ctrl+F: search the whole conversation, so every message is opened first.
   useEffect(() => {
     if (S.finding && thread) setExpanded(new Set(thread.map((m) => m.key)));
@@ -235,6 +260,9 @@ export function Reader() {
   const inAttention = target.reasons && !user.acked[target.key];
   const flagged = !!user.flagged[target.key];
   const acct = accountOf(open.acct);
+  // Earlier messages you have already seen are tucked into one line rather than a stack to scroll past.
+  const firstOpen = thread.findIndex((m) => expanded.has(m.key));
+  const tucked = !showEarlier && firstOpen >= 3 ? firstOpen : 0;
   const toggle = (key) => { const n = new Set(expanded); if (n.has(key)) n.delete(key); else n.add(key); setExpanded(n); };
 
   return html`
@@ -275,8 +303,9 @@ export function Reader() {
             <button class="btn ghost small" onClick=${() => set({ ruleEditor: { topic: model.topics.get(target.topic) } })}>Define topic…</button>`}
         </div>
       </div>
-      <div class="reader-body">
-        ${thread.map((m) => html`<${MessageCard} key=${m.key} m=${m} open=${expanded.has(m.key)} onToggle=${() => toggle(m.key)} />`)}
+      <div class="reader-body" ref=${body} onWheel=${userMoved} onPointerDown=${userMoved} onKeyDown=${userMoved}>
+        ${tucked > 0 && html`<button class="earlier" onClick=${() => { pin.current = null; setShowEarlier(true); }}>${tucked} earlier messages</button>`}
+        ${thread.slice(tucked).map((m) => html`<${MessageCard} key=${m.key} m=${m} open=${expanded.has(m.key)} onToggle=${() => toggle(m.key)} />`)}
       </div>
     </aside>`;
 }

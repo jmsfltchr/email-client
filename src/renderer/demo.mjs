@@ -76,6 +76,10 @@ export function generateDemo(now = Date.now()) {
     ['me', 2.8 * DAY, 'Looks good. Added one line on the alert threshold. Ship it.'],
   ]);
   convo(WORK, P.sofia, 'Design partnership — next steps', [
+    ['me', 24 * DAY, 'Hi Sofia, lovely to meet you at the meetup. Would you be open to a design partnership?'],
+    ['them', 23.5 * DAY, 'Hi Alex, yes, very much. What did you have in mind?'],
+    ['me', 23 * DAY, 'A six-week engagement on the onboarding flow, starting in January.'],
+    ['them', 22 * DAY, 'That could work. Can you send a short brief?'],
     ['me', 20 * DAY, 'Hi Sofia, great to meet last week. Sharing the brief as promised.'],
     ['them', 18 * DAY, 'Thanks Alex, received. We will come back with a proposal by month end.'],
     ['me', 17 * DAY, 'Perfect, thank you.'],

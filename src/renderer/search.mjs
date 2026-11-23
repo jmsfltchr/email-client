@@ -155,7 +155,7 @@ export function Search() {
           ${remote && html`<div class="banner">Full-text matches from Gmail for “${remote.q}”. <button onClick=${() => setRemote(null)}>Back to quick search</button></div>`}
           <div class="col-list">
             ${results.slice(0, limit).map((m) => html`
-              <div class=${cx('result', S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)}>
+              <div class=${cx('result', S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m, { exact: true })}>
                 <span class="d" title=${fullDate(m.ts)}>${ago(m.ts)}</span>
                 <span class="f"><${Avatar} addr=${m.kind === 'me' ? m.to[0] || m.from.addr : m.from.addr} name=${m.kind === 'me' ? '' : m.from.name} small /> ${m.kind === 'me' ? `To ${m.to[0] || ''}` : displayName(m.from)}</span>
                 <span class="s">${m.subject || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span>— ${m.snippet}</span>`}</span>

@@ -122,10 +122,12 @@ export const accountOf = (email) => S.accounts.find((a) => a.email === email) ||
 /** Unread in Gmail and not yet opened here. */
 export const isUnread = (m) => !!S.unread[m.acct]?.has(m.id) && !S.user.read[m.key];
 
-export function openMessage(m) {
-  set({ open: { acct: m.acct, threadId: m.threadId, key: m.key } });
-  // Opening a conversation reads it (locally: Stillmail does not change anything in Gmail).
+/** Open a conversation. Unless `exact`, it lands on the latest unread message rather than the one clicked. */
+export function openMessage(m, { exact = false } = {}) {
   const fresh = (S.model?.threads.get(`${m.acct}:${m.threadId}`) || [m]).filter(isUnread);
+  const latest = fresh.length && !exact ? fresh.reduce((a, b) => (b.ts > a.ts ? b : a)) : m;
+  set({ open: { acct: m.acct, threadId: m.threadId, key: m.key, unread: exact ? [] : fresh.map((x) => x.key), scrollTo: latest.key, n: (S.open?.n || 0) + 1 } });
+  // Opening a conversation reads it (locally: Stillmail does not change anything in Gmail).
   if (!fresh.length) return;
   for (const x of fresh) S.user.read[x.key] = true;
   saveSoon();
