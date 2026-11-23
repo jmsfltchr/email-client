@@ -78,10 +78,24 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     const body = page.frameLocator('.reader iframe');
     const old = body.locator('text=Tuesday or Wednesday afternoon both work');
     assert.equal(await old.isVisible(), false, 'quoted history hidden');
+    const height = () => page.locator('.reader iframe').evaluate((el) => el.getBoundingClientRect().height);
+    const folded = await height();
     await body.locator('.sm-quote-toggle').click();
     await old.waitFor({ state: 'visible' });
+    await page.waitForFunction((h) => document.querySelector('.reader iframe').getBoundingClientRect().height > h + 80, folded);
     await body.locator('.sm-quote-toggle').click();
     assert.equal(await old.isVisible(), false);
+    await page.waitForFunction((h) => Math.abs(document.querySelector('.reader iframe').getBoundingClientRect().height - h) < 2, folded);
+    // the same for mail that pins its own page height
+    const pinned = await page.locator('.reader iframe').evaluate(async (el, h) => {
+      const d = el.contentDocument;
+      d.documentElement.style.height = '100%'; d.body.style.height = '100%';
+      d.querySelector('.sm-quote-toggle').click();
+      const open = el.getBoundingClientRect().height;
+      d.querySelector('.sm-quote-toggle').click();
+      return [open > h + 80, Math.abs(el.getBoundingClientRect().height - h) < 2];
+    }, folded);
+    assert.deepStrictEqual(pinned, [true, true]);
   });
 
   await step('ctrl/cmd+F finds text across the conversation', async () => {

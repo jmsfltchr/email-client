@@ -56,7 +56,16 @@ function EmailBody({ full, m }) {
     const el = frame.current;
     const doc = el?.contentDocument;
     if (!doc?.body) return;
-    const fit = () => { el.style.height = `${Math.max(40, doc.documentElement.scrollHeight)}px`; };
+    // Size the frame to its content. The page's own scrollHeight never drops below the frame's current
+    // height, so it cannot be used to shrink again; measure the content's bounding box instead.
+    const fit = () => {
+      const all = doc.createRange();
+      all.selectNodeContents(doc.body);
+      const cs = doc.defaultView.getComputedStyle(doc.body);
+      const bottom = all.getBoundingClientRect().bottom - doc.documentElement.getBoundingClientRect().top;
+      const h = Math.ceil(bottom + parseFloat(cs.paddingBottom) + parseFloat(cs.marginBottom));
+      el.style.height = `${Math.max(40, h > 0 ? h : doc.documentElement.scrollHeight)}px`;
+    };
     fit();
     new ResizeObserver(fit).observe(doc.body);
     doc.addEventListener('click', (e) => {
@@ -64,6 +73,7 @@ function EmailBody({ full, m }) {
       if (toggle) {
         const quote = toggle.nextElementSibling;
         if (quote?.classList.contains('sm-quote')) quote.toggleAttribute('hidden');
+        fit();
         return;
       }
       const a = e.target.closest?.('a[href]');
