@@ -183,8 +183,8 @@ export function RuleEditor() {
   const { topic } = S.ruleEditor;
   const sender = S.model.senders.get(topic.addr);
   const initial = topic.label.split('⋯').map((p) => escapeRe(p.trim())).filter((p, i, all) => p || all.length > 1).join('.*').replace(/^\.\*|\.\*$/g, '') || '.*';
-  const [name, setName] = useState(topic.kind === 'varied' ? '' : topic.label.replace(/\s*⋯\s*/g, ' … ').trim());
-  const [pattern, setPattern] = useState(topic.kind === 'varied' ? '' : initial);
+  const [name, setName] = useState(topic.kind === 'sender' ? '' : topic.label.replace(/\s*⋯\s*/g, ' … ').trim());
+  const [pattern, setPattern] = useState(topic.kind === 'sender' ? '' : initial);
   const [scope, setScope] = useState(topic.addr);
   let re = null, error = '';
   try { if (pattern) re = new RegExp(pattern, 'i'); } catch (e) { error = e.message; }

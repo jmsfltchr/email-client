@@ -108,10 +108,12 @@ export function toMeta(acct, msg) {
     snippet: decodeEntities(msg.snippet || ''),
     sent: labels.includes('SENT'),
     bulk: !!(header(hs, 'List-Unsubscribe') || header(hs, 'List-Id') || /bulk|list|junk/i.test(header(hs, 'Precedence'))),
+    // Machine-generated (vacation responder, read receipt): never evidence that I wrote to someone.
+    auto: /^auto-/i.test(header(hs, 'Auto-Submitted')) || !!header(hs, 'X-Autoreply') || undefined,
   };
 }
 
-export const META_HEADERS = ['From', 'To', 'Cc', 'Subject', 'Date', 'List-Unsubscribe', 'List-Id', 'Precedence'];
+export const META_HEADERS = ['From', 'To', 'Cc', 'Subject', 'Date', 'List-Unsubscribe', 'List-Id', 'Precedence', 'Auto-Submitted', 'X-Autoreply'];
 
 function decodeEntities(s) {
   return s.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))

@@ -1,7 +1,7 @@
 import { html, render, useState, useMemo, useEffect, useRef, cx, ago, fullDate, displayName } from './util.mjs';
 import {
   S, api, init, set, useStore, passes, toggleIn, cutoffs, ageBand, accountOf, openMessage, closeReader,
-  markDone, undoDone, ack, toggleFlag, toggleQuiet, setSenderKind, setSetting, mutate, toast,
+  markDone, undoDone, ack, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
 } from './store.mjs';
 import { DAY, orderTopics, reorder, baseSubject } from '../core/classify.mjs';
 import { Compose, newDraft, startReply } from './compose.mjs';
@@ -222,7 +222,10 @@ function TopicList({ rows }) {
         ${open && html`
           <div class="topic-body">
             <div class="topic-tools" onClick=${(e) => e.stopPropagation()}>
-              <button class="btn small" onClick=${() => set({ ruleEditor: { topic: t } })}>Define topic by pattern…</button>
+              <button class="btn small" title=${`Group everything from ${t.addr} as one topic, whatever the subject`}
+                onClick=${() => { const key = `${t.addr}|*`; const on = !S.user.senderTopic[t.addr]; toggleSenderTopic(t.addr); if (on) set({ expanded: new Set([...S.expanded].filter((k) => !k.startsWith(`${t.addr}|`)).concat(key)) }); }}>
+                ${S.user.senderTopic[t.addr] ? 'Split this sender by subject' : 'One topic for this sender'}</button>
+              ${!S.user.senderTopic[t.addr] && html`<button class="btn small" onClick=${() => set({ ruleEditor: { topic: t } })}>Define topic by pattern…</button>`}
               <button class="btn small" onClick=${() => toggleQuiet(t.key)}>${S.user.quietTopics[t.key] ? 'Flag this topic again' : 'Never flag this topic'}</button>
               <button class="btn small" onClick=${() => setSenderKind(t.addr, 'important')} title=${`Treat ${t.addr} as a person you need to answer`}>Sender is important</button>
               ${ranked.has(t.key) && html`<button class="btn small" onClick=${() => mutate((u) => { u.topicOrder = u.topicOrder.filter((k) => k !== t.key); })}>Remove from priority order</button>`}

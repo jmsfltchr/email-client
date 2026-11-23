@@ -135,6 +135,9 @@ export const toggleFlag = (m) => mutate((u) => {
 export const setSenderKind = (addr, kind) => mutate((u) => {
   if (kind) u.senderKind[addr] = kind; else delete u.senderKind[addr];
 });
+export const toggleSenderTopic = (addr) => mutate((u) => {
+  if (u.senderTopic[addr]) delete u.senderTopic[addr]; else u.senderTopic[addr] = true;
+});
 export const toggleQuiet = (topicKey) => mutate((u) => {
   if (u.quietTopics[topicKey]) delete u.quietTopics[topicKey]; else u.quietTopics[topicKey] = true;
 });

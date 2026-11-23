@@ -116,7 +116,7 @@ test('topic clustering on the demo mailbox', () => {
   const d = generateDemo(NOW);
   const model = buildModel(d.messages, defaultState(), { now: NOW, myAddrs: new Set(d.accounts.map((a) => a.email)) });
   const labels = [...model.topics.values()].map((t) => `${t.org} › ${t.channel} › ${t.label}`);
-  for (const want of ['Github › notifications › [fernhill/api] ⋯', 'Harbourbank › alerts › You spent ⋯ at ⋯', 'Stripe › billing › Payout of ⋯ is on its way', 'Circleci › builds › Success: ⋯ (main)', 'Google › calendar-notification › Accepted: ⋯', 'Themargin › newsletter › (varied subjects)']) {
+  for (const want of ['Github › notifications › [fernhill/api] ⋯', 'Harbourbank › alerts › You spent ⋯ at ⋯', 'Stripe › billing › Payout of ⋯ is on its way', 'Circleci › builds › Success: ⋯ (main)', 'Google › calendar-notification › Accepted: ⋯', 'Themargin › newsletter › all mail']) {
     assert.ok(labels.includes(want), `${want}\n${labels.join('\n')}`);
   }
   assert.deepEqual(model.needsReply.map((m) => m.from.name), ['Priya Raman', 'Helen Rowan', 'Marcus Oyelaran', 'Dana Whitfield', 'Tom Becker']);
@@ -156,4 +156,43 @@ test('identity colours: stable, and distinct for the first organisations', () =>
   assert.equal(initials('Priya Raman', 'p@x.com'), 'PR');
   assert.equal(initials('"Doe, Jane (Acme)"', 'j@x.com'), 'DA');
   assert.equal(initials('', 'zed@x.com'), 'Z');
+});
+
+import { clusterChannel, isBroadcast } from '../src/core/classify.mjs';
+
+test('newsletters: one topic per sender, automatically and on request', () => {
+  const from = { name: 'The Margin', addr: 'hello@margin.example' };
+  const titles = ['How to read a changelog', 'How to run a retro', 'How to say no', 'The quiet cost of dashboards', 'Notes on slow software',
+    'Why we stopped estimating', 'A field guide to on-call', 'What the map leaves out', 'Shipping is a habit', 'In praise of boring tools',
+    'Small teams, long games', 'The meeting that should be a doc', 'Seven kinds of ambiguity', 'On keeping a work journal'];
+  const msgs = titles.map((subject, i) => mk({ from, subject, bulk: true, ts: NOW - (i + 1) * 7 * DAY }));
+  const model = buildModel(msgs, defaultState(), opts);
+  // three headlines starting "How to" are not a topic of their own
+  assert.deepEqual([...model.topics.values()].map((t) => [t.key, t.label, t.count]), [['hello@margin.example|*', 'all mail', 14]]);
+  assert.equal(model.attention.length, 0, 'a new headline is not out of the ordinary');
+
+  // a sender with recurring subjects splits by subject, until told otherwise
+  const bank = [...Array.from({ length: 6 }, (_, i) => mk({ from: 'alerts@bank.com', subject: 'Statement ready', ts: NOW - i * 30 * DAY })),
+    ...Array.from({ length: 4 }, (_, i) => mk({ from: 'alerts@bank.com', subject: `Payment of £${i}0 received`, ts: NOW - i * 9 * DAY }))];
+  assert.equal(buildModel(bank, defaultState(), opts).topics.size, 2);
+  const st = defaultState(); st.senderTopic['alerts@bank.com'] = true;
+  const one = buildModel(bank, st, opts);
+  assert.deepEqual([...one.topics.values()].map((t) => [t.key, t.kind, t.count]), [['alerts@bank.com|*', 'sender', 10]]);
+  assert.equal(clusterChannel(bank, [], true).size, 1);
+});
+
+test('a stray or automatic reply does not make a mass sender important', () => {
+  const news = { name: 'Weekly', addr: 'weekly@news.com' };
+  const received = Array.from({ length: 12 }, (_, i) => mk({ from: news, subject: `Issue about thing ${'abcdefghijkl'[i]}`, bulk: true, ts: NOW - i * 7 * DAY }));
+  const kindOf = (extra, addr = news.addr) => buildModel([...received, ...extra], defaultState(), opts).senders.get(addr).kind;
+  const sent = (o) => mk({ from: 'me@x.com', sent: true, subject: 'Re: x', ts: NOW - 100 * DAY, ...o });
+  assert.equal(kindOf([sent({ to: [news.addr] })]), 'channel', 'one reply to a newsletter');
+  assert.equal(kindOf([sent({ to: [news.addr] }), sent({ to: [news.addr] })]), 'important', 'a real back-and-forth');
+  // vacation responder: marked automatic, or carrying Precedence: bulk
+  const person = Array.from({ length: 4 }, (_, i) => mk({ from: 'ann@a.com', subject: 'hi', ts: NOW - i * DAY }));
+  const k = (s) => buildModel([...person, s], defaultState(), opts).senders.get('ann@a.com').kind;
+  assert.equal(k(sent({ to: ['ann@a.com'], auto: true })), 'channel');
+  assert.equal(k(sent({ to: ['ann@a.com'], bulk: true })), 'channel');
+  assert.equal(k(sent({ to: ['ann@a.com'] })), 'important', 'one real reply to a person is enough');
+  assert.ok(isBroadcast({ addr: 'noreply@svc.com', bulk: false, count: 3 }, 1) && !isBroadcast({ addr: 'ann@a.com', bulk: false, count: 300 }, 1));
 });

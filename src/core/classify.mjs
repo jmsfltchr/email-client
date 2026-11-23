@@ -1,5 +1,5 @@
 // Pure classification engine. Takes message metadata + user state and derives:
-//   - important senders (anyone I've written to), notification channels, new senders
+//   - important senders (anyone I've written to, mass senders excepted), notification channels, new senders
 //   - topics per channel (recurring subject patterns)
 //   - "needs reply" threads and out-of-the-ordinary "attention" messages
 // No I/O; runs in the renderer and in node tests.
@@ -36,6 +36,7 @@ export function defaultState() {
   return {
     settings: { ...DEFAULT_SETTINGS },
     senderKind: {}, // addr -> 'important' | 'channel'
+    senderTopic: {}, // addr -> true: everything from this address is one topic
     topicRules: [], // [{id, scope, pattern, name}]
     topicOrder: [], // topic keys in user priority order
     quietTopics: {}, // topic key -> true: never auto-flag
@@ -113,19 +114,28 @@ export function compileRules(rules) {
 
 // ---------------------------------------------------------------- topics
 
+export const ALL_MAIL = 'all mail';
+const OTHER_MAIL = 'everything else';
+
 const TAG = /^\[[^\]]{1,60}\]/;
 
 /**
  * Assign every message of one channel to a topic.
  * Returns Map(topicKeySuffix -> {kind, label, msgs}).
  */
-export function clusterChannel(msgs, rules) {
+export function clusterChannel(msgs, rules, oneTopic = false) {
   const topics = new Map();
   const put = (suffix, kind, label, m) => {
     let t = topics.get(suffix);
     if (!t) topics.set(suffix, (t = { kind, label, msgs: [] }));
     t.msgs.push(m);
   };
+
+  // 0. the user said this address is a single topic (newsletters whose subject is the headline)
+  if (oneTopic) {
+    for (const m of msgs) put('*', 'sender', ALL_MAIL, m);
+    return topics;
+  }
 
   // 1. user rules win
   const rest = [];
@@ -209,6 +219,7 @@ export function clusterChannel(msgs, rules) {
     }
     return out.join(' ');
   };
+  const weakTotal = weak.length;
   const cluster = (fromEnd) => {
     for (let len = 1; len <= 4 && weak.length >= 3; len++) {
       const buckets = new Map();
@@ -225,6 +236,9 @@ export function clusterChannel(msgs, rules) {
       const taken = new Set();
       for (const [k, gs] of buckets) {
         if (gs.length < 3) continue;
+        // A few headlines that happen to open with the same words are not a pattern:
+        // unless it is a "Label:" it must account for a real share of the one-off subjects.
+        if (!(len === 1 && !fromEnd) && gs.length < weakTotal * 0.25) continue;
         const shared = common(gs.map((g) => g.tpl.split(' ')), fromEnd);
         for (const g of gs) {
           taken.add(g);
@@ -240,9 +254,10 @@ export function clusterChannel(msgs, rules) {
   // 6. what's left: either a channel whose subjects always vary, or genuine one-offs
   const weakCount = weak.reduce((n, g) => n + g.msgs.length, 0);
   const varied = weak.length >= 5 && weakCount >= msgs.length * 0.4;
+  const restLabel = topics.size ? OTHER_MAIL : ALL_MAIL; // the address itself is the topic
   for (const g of weak) {
     for (const m of g.msgs) {
-      if (varied) put('*', 'varied', '(varied subjects)', m);
+      if (varied) put('*', 'sender', restLabel, m);
       else put(`e:${g.key}`, 'exact', templateLabel(g.tpl), m);
     }
   }
@@ -250,6 +265,16 @@ export function clusterChannel(msgs, rules) {
 }
 
 // ---------------------------------------------------------------- model
+
+/**
+ * A mass sender (list headers or a no-reply style address) that I have written to once at most,
+ * or hardly ever compared with what it sends: a stray reply or unsubscribe email does not turn
+ * a newsletter into a correspondent.
+ */
+export function isBroadcast(sender, timesWritten) {
+  if (!sender.bulk && !looksAutomated(sender.addr)) return false;
+  return timesWritten < Math.max(2, sender.count / 10);
+}
 
 export function isMine(m, myAddrs) {
   return !!m.sent || myAddrs.has(m.from.addr);
@@ -264,10 +289,11 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
   const farCut = now - st.farDays * DAY;
 
   // --- who have I written to?
-  const important = new Set();
+  // Auto-replies (vacation responder and the like) are not me writing to anyone.
+  const wroteTo = new Map(); // addr -> how many times
   for (const m of messages) {
-    if (!isMine(m, myAddrs)) continue;
-    for (const a of m.to) if (!myAddrs.has(a)) important.add(a);
+    if (!isMine(m, myAddrs) || m.auto || m.bulk) continue;
+    for (const a of m.to) if (!myAddrs.has(a)) wroteTo.set(a, (wroteTo.get(a) || 0) + 1);
   }
 
   // --- senders
@@ -290,7 +316,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
   for (const s of senders.values()) {
     const override = state.senderKind[s.addr];
     if (override) s.kind = override;
-    else if (important.has(s.addr)) s.kind = 'important';
+    else if (wroteTo.has(s.addr) && !isBroadcast(s, wroteTo.get(s.addr))) s.kind = 'important';
     else if (s.count >= st.channelMin || s.bulk || looksAutomated(s.addr)) s.kind = 'channel';
     else s.kind = 'new';
     s.auto = !override;
@@ -304,7 +330,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
     for (const m of s.msgs) { m.kind = s.kind; m.root = s.root; m.topic = null; m.reasons = null; }
     if (s.kind !== 'channel') continue;
     const scoped = rules.filter((r) => r.scope === '*' || r.scope === s.addr || r.scope === s.root);
-    for (const [suffix, t] of clusterChannel(s.msgs, scoped)) {
+    for (const [suffix, t] of clusterChannel(s.msgs, scoped, !!state.senderTopic[s.addr])) {
       const key = `${s.addr}|${suffix}`;
       t.msgs.sort((a, b) => a.ts - b.ts);
       const topic = {
@@ -331,7 +357,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
       const hit = kwRe && (kwRe.exec(m.subject) || kwRe.exec(m.snippet || ''));
       if (hit) addReason(m, 'keyword', hit[0].toLowerCase());
       const t = topics.get(m.topic);
-      if (!t || t.kind === 'varied' || t.kind === 'rule' || s.count < 5) continue;
+      if (!t || t.kind === 'sender' || t.kind === 'rule' || s.count < 5) continue;
       if (t.count <= 2) {
         if (oneOffs.get(s.addr) >= 4) continue;
         addReason(m, 'new-topic', t.firstTs === m.ts ? 'New topic' : 'Rare topic');

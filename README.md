@@ -31,11 +31,11 @@ Stillmail requests read-only access to mail and contacts, plus permission to sen
 
 ## How it works
 
-**Needs reply.** Any address you have ever written to is an important sender. A conversation appears here when the latest message is from one of them and you have not answered since. Replying removes it; so does *No reply needed*.
+**Needs reply.** Any address you have ever written to is an important sender. Automatic replies (such as a vacation responder) do not count, and a mass sender (list headers or a no-reply style address) only counts once you have written to it at least twice and at least once for every ten emails it has sent. A conversation appears here when the latest message is from one of them and you have not answered since. Replying removes it; so does *No reply needed*.
 
 **Notification channels.** An address that has sent you several emails (3 by default) and never had a reply is a notification channel. So is anything with bulk-mail headers or a no-reply style address. You can override any address in the reader or in Settings.
 
-**Topics.** Within a channel, subjects are reduced to a pattern (ids, dates and amounts are collapsed) and grouped, so `Your order #123 has shipped` and `Your order #456 has shipped` are one topic. Shared `[tags]`, single varying words, and common prefixes are also grouped. When that is not enough, *Define topic by pattern…* lets you group with a regular expression. Topics are shown as `Org › channel › topic` with the time of the latest email, over the period chosen at the top of the panel. Drag the handle (or Alt+↑/↓) to pin topics in priority order; unpinned topics follow by recency.
+**Topics.** Within a channel, subjects are reduced to a pattern (ids, dates and amounts are collapsed) and grouped, so `Your order #123 has shipped` and `Your order #456 has shipped` are one topic. Shared `[tags]`, single varying words, and common prefixes are also grouped. A sender whose subject changes with every issue, such as a newsletter, is treated as a single topic named after the address alone; this is detected automatically, and *One topic for this sender* forces it for any address. When that is not enough, *Define topic by pattern…* lets you group with a regular expression. Topics are shown as `Org › channel › topic` with the time of the latest email, over the period chosen at the top of the panel. Drag the handle (or Alt+↑/↓) to pin topics in priority order; unpinned topics follow by recency.
 
 **Attention.** A notification email is escalated when:
 

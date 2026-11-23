@@ -181,6 +181,19 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     assert.ok(!labels.some((l) => l.includes('Success:')));
   });
 
+  await step('one topic for this sender, and back', async () => {
+    await page.click('.nav >> text=Focus');
+    const count = async () => (await topicLabels()).filter((l) => l.startsWith('Harbourbank')).length;
+    assert.ok(await count() > 1);
+    const t = page.locator('.topic', { hasText: 'You spent' });
+    await t.locator('> .row').click();
+    await t.locator('text=One topic for this sender').click();
+    const labels = (await topicLabels()).filter((l) => l.startsWith('Harbourbank'));
+    assert.deepStrictEqual(labels, ['Harbourbank›alerts›all mail']);
+    await page.locator('.topic', { hasText: 'all mail' }).filter({ hasText: 'Harbourbank' }).locator('text=Split this sender by subject').click();
+    assert.ok(await count() > 1);
+  });
+
   await step('settings renders', async () => {
     await page.click('.nav >> text=Settings');
     await page.waitForSelector('.settings');
