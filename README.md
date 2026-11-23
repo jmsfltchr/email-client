@@ -91,7 +91,7 @@ src/renderer  UI (Preact + htm, no build step) and the demo mailbox
 
 ## Known limits
 
-- The first sync fetches metadata for 12 months of received mail (configurable) and all sent mail; a large mailbox takes several minutes. The app is usable while it runs.
+- The first sync fetches metadata for 12 months of received mail (configurable) and all sent mail; it runs at about 30 messages a second to stay inside Gmail's per-minute quota, so a large mailbox takes a while (roughly half an hour for 50,000 messages). The app is usable while it runs.
 - Composing is plain text. Drafts are not saved to Gmail.
 - Notifications need the app to be running; closing the window quits it on Windows and Linux.
 - Organisation names come from the sender's registrable domain, using a built-in list of common two-level suffixes rather than the full Public Suffix List.

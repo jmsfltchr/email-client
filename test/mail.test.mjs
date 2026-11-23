@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRaw, toMeta, toFull, encodeHeaderText } from '../src/core/mime.mjs';
 import { AccountSync } from '../src/main/sync.mjs';
-import { Gmail, GmailError } from '../src/main/gmail.mjs';
+import { Gmail, GmailError, RateLimiter, quotaCost } from '../src/main/gmail.mjs';
 
 const b64u = (s) => Buffer.from(s).toString('base64url');
 
@@ -140,7 +140,7 @@ test('Gmail client: retries rate limits, pages lists, picks send transport by si
     if (u.pathname.endsWith('/messages')) return Response.json({ messages: [{ id: '3' }] });
     return Response.json({ id: 'sent1', threadId: 'T' });
   };
-  const g = new Gmail(async () => 'tok', fetchImpl);
+  const g = new Gmail(async () => 'tok', fetchImpl, { limiter: null });
   const realTimeout = globalThis.setTimeout;
   globalThis.setTimeout = (fn) => realTimeout(fn, 0); // skip backoff waits
   try {
@@ -194,4 +194,47 @@ test('org icons: data URL on success, null for unknown or reserved domains', asy
   const never = async () => { throw new Error('should not be called'); };
   assert.equal(await fetchOrgIcon('fernhill.example', never), null);
   assert.equal(await fetchOrgIcon('bad domain/../x', never), null);
+});
+
+test('rate limiter keeps background work under the per-minute quota', async () => {
+  let t = 0;
+  const waits = [];
+  const lim = new RateLimiter({ perMinute: 6000, burst: 100, now: () => t, wait: async (ms) => { waits.push(ms); t += ms; } });
+  for (let i = 0; i < 1200; i++) await lim.take(5); // 6,000 units of metadata fetches
+  assert.ok(t >= 58000 && t <= 60000, `6,000 units took ${t} ms`);
+
+  // urgent calls never wait, but their cost is repaid by later background work
+  const before = t;
+  await lim.take(100, true);
+  assert.equal(t, before);
+  await lim.take(5);
+  assert.ok(t - before >= 1000, 'background work waited for the borrowed units');
+
+  // a pause holds queued work, in order
+  lim.pause(30000);
+  const start = t;
+  const order = [];
+  await Promise.all([lim.take(5).then(() => order.push('a')), lim.take(5).then(() => order.push('b'))]);
+  assert.ok(t - start >= 30000);
+  assert.deepEqual(order, ['a', 'b']);
+
+  assert.equal(quotaCost('https://gmail.googleapis.com/gmail/v1/users/me/messages/abc?format=metadata'), 5);
+  assert.equal(quotaCost('https://gmail.googleapis.com/gmail/v1/users/me/messages/send'), 100);
+  assert.equal(quotaCost('https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send'), 100);
+  assert.equal(quotaCost('https://gmail.googleapis.com/gmail/v1/users/me/history'), 2);
+  assert.equal(quotaCost('https://people.googleapis.com/v1/otherContacts'), 0);
+});
+
+test('Gmail client: a quota error pauses the limiter and the request then succeeds', async () => {
+  let t = 0, calls = 0;
+  const lim = new RateLimiter({ now: () => t, wait: async (ms) => { t += ms; } });
+  const quota = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: "Quota exceeded for quota metric 'Total Query Cost' and limit 'Units per minute per user'", errors: [{ reason: 'rateLimitExceeded' }] } };
+  const g = new Gmail(async () => 'tok', async () => (++calls <= 3 ? new Response(JSON.stringify(quota), { status: calls === 2 ? 403 : 429 }) : Response.json({ id: 'x' })), { limiter: lim });
+  assert.deepEqual(await g.getMeta('x'), { id: 'x' });
+  assert.equal(calls, 4);
+  assert.ok(t >= 35000, `held back ${t} ms across three refusals`);
+
+  // gives up eventually, flagged as a rate limit so the UI can say so
+  const always = new Gmail(async () => 'tok', async () => new Response(JSON.stringify(quota), { status: 429 }), { limiter: new RateLimiter({ now: () => t, wait: async (ms) => { t += ms; } }) });
+  await assert.rejects(always.getMeta('x'), (e) => e.limited === true && e.status === 429);
 });

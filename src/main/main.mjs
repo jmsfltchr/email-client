@@ -279,7 +279,7 @@ const handlers = {
       const sync = syncs.get(email);
       if (!sync) continue;
       const ids = [];
-      for await (const id of sync.gmail.listIds(`${q} -in:drafts -in:chats`, { max: 200 })) ids.push(id);
+      for await (const id of sync.gmail.listIds(`${q} -in:drafts -in:chats`, { max: 200, urgent: true })) ids.push(id);
       const missing = ids.filter((id) => !sync.messages.has(id));
       if (missing.length) await sync.fetchMany(missing, 'search', true);
       for (const id of ids) if (sync.messages.has(id)) keys.push(`${email}:${id}`);

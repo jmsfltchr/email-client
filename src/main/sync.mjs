@@ -47,7 +47,10 @@ export class AccountSync {
       this.emit({ type: 'progress', acct: this.email, phase: 'idle', at: Date.now() });
     } catch (e) {
       const auth = e.code === 'invalid_grant' || e.status === 401;
-      this.emit({ type: 'error', acct: this.email, auth, message: auth ? 'Sign-in expired. Reconnect this account in Settings.' : e.message });
+      const message = auth ? 'Sign-in expired. Reconnect this account in Settings.'
+        : e.limited ? 'Gmail is rate-limiting this account. Sync is paused and will carry on by itself in a minute.'
+        : e.message;
+      this.emit({ type: 'error', acct: this.email, auth, message });
     } finally {
       this.running = false;
     }
