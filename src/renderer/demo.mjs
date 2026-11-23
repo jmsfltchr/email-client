@@ -224,7 +224,10 @@ export function createDemoApi() {
 
   return {
     async bootstrap() {
-      return { demo: true, accounts: demo.accounts, hasOAuthClient: false, state: store('stillmail.demo.state'), messages: demo.messages, photos: DEMO_PHOTOS };
+      const unread = {};
+      const fresh = demo.messages.filter((m) => !m.sent && (Date.now() - m.ts < 8 * 3600000 || /Sunday lunch|Payment failed/.test(m.subject)));
+      for (const m of fresh) (unread[m.acct] ||= []).push(m.id);
+      return { demo: true, accounts: demo.accounts, hasOAuthClient: false, state: store('stillmail.demo.state'), messages: demo.messages, photos: DEMO_PHOTOS, unread };
     },
     onEvent(cb) { listeners.add(cb); return () => listeners.delete(cb); },
     async saveState(state) { store('stillmail.demo.state', state); },

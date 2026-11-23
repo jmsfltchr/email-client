@@ -123,6 +123,7 @@ a { color: var(--accent); }
 .row .snip { color: var(--muted); }
 .row .age { flex: none; min-width: 56px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .row .wait { color: var(--warn); }
+.row .unread { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #4da3ff; }
 .row .bumped { flex: none; color: var(--accent); font-weight: 700; font-size: 12px; }
 .row-actions { display: none; gap: 4px; flex: none; }
 .row:hover .row-actions, .row:focus-within .row-actions { display: flex; }

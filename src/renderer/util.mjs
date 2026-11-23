@@ -48,12 +48,26 @@ export function sanitizeEmailHtml(src) {
   for (const el of doc.querySelectorAll('*')) {
     for (const attr of [...el.attributes]) {
       const name = attr.name.toLowerCase();
-      if (name.startsWith('on') || name === 'srcset' || name === 'ping') el.removeAttribute(attr.name);
+      if (name.startsWith('on') || name === 'ping') el.removeAttribute(attr.name);
       else if ((name === 'href' || name === 'src' || name === 'action' || name === 'background') && /^\s*(javascript|vbscript|data:text\/html)/i.test(attr.value)) el.removeAttribute(attr.name);
     }
-    if (el.tagName === 'IMG' && /^\s*(https?:)?\/\//i.test(el.getAttribute('src') || '')) remoteImages = true;
+    // "//host/pic.png" would resolve against the app's own file: address inside the frame.
+    for (const name of ['src', 'background', 'poster']) {
+      const v = el.getAttribute(name);
+      if (v && /^\s*\/\//.test(v)) el.setAttribute(name, `https:${v.trim()}`);
+    }
+    if (el.tagName === 'IMG') {
+      // Lazy-loading and responsive hints misfire in an auto-sized frame; fall back to them only when src is missing.
+      el.removeAttribute('loading');
+      if (!el.getAttribute('src')) {
+        const alt = el.getAttribute('data-src') || (el.getAttribute('srcset') || '').trim().split(/[\s,]+/)[0];
+        if (alt) el.setAttribute('src', alt.startsWith('//') ? `https:${alt}` : alt);
+      }
+      if (/^\s*https?:\/\//i.test(el.getAttribute('src') || '')) remoteImages = true;
+    }
   }
   if (/url\(\s*['"]?\s*(https?:)?\/\//i.test(src)) remoteImages = true;
+  doc.querySelectorAll('[srcset]').forEach((el) => el.removeAttribute('srcset'));
   const styles = [...doc.querySelectorAll('style')].map((s) => s.outerHTML).join('');
   doc.body.querySelectorAll('style').forEach((s) => s.remove());
   collapseQuoted(doc);

@@ -83,7 +83,8 @@ test('sync: backfill, incremental add/remove, and expired history recovery', asy
   const mailbox = {
     historyId: 100,
     msgs: { a: gmsg('a'), b: gmsg('b', { labels: ['SENT'] }), c: gmsg('c') },
-    list: (q) => (q.startsWith('in:sent') ? ['b'] : ['a', 'b', 'c', 'gone']),
+    unread: ['a', 'c'],
+    list: (q) => (q.startsWith('is:unread') ? mailbox.unread : q.startsWith('in:sent') ? ['b'] : ['a', 'b', 'c', 'gone']),
     history: () => ({ added: new Set(), removed: new Set(), historyId: '100' }),
   };
   const events = [];
@@ -93,9 +94,12 @@ test('sync: backfill, incremental add/remove, and expired history recovery', asy
   await sync.tick();
   assert.equal(sync.backfillDone, true);
   assert.deepEqual([...sync.messages.keys()].sort(), ['a', 'b', 'c']);
-  assert.match(gmail.calls[0], /^newer_than:30d/);
-  assert.match(gmail.calls[2], /^after:\d{4}\/\d+\/\d+ -in:drafts -in:chats$/);
+  assert.match(gmail.calls[0], /^is:unread newer_than:90d/);
+  assert.match(gmail.calls[1], /^newer_than:30d/);
+  assert.match(gmail.calls[3], /^after:\d{4}\/\d+\/\d+ -in:drafts -in:chats$/);
   assert.ok(saves > 0);
+  assert.deepEqual(events.filter((e) => e.type === 'unread').map((e) => e.ids), [['a', 'c']], 'reported once, not again when unchanged');
+  assert.deepEqual([...sync.unread], ['a', 'c']);
   assert.equal(events.filter((e) => e.type === 'error').length, 0);
 
   // incremental: one new, one deleted
@@ -106,7 +110,13 @@ test('sync: backfill, incremental add/remove, and expired history recovery', asy
   assert.deepEqual([...sync.messages.keys()].sort(), ['b', 'c', 'd']);
   assert.equal(sync.historyId, '120');
   assert.deepEqual(events.find((e) => e.removed?.length).removed, ['me@x.com:a']);
+  mailbox.unread = ['c', 'd']; // 'a' was read elsewhere, 'd' is new
   assert.ok(events.find((e) => e.live && e.added[0]?.id === 'd'));
+  assert.equal(events.filter((e) => e.type === 'unread').length, 0, 'nothing reported while the unread set is unchanged');
+  events.length = 0;
+  await sync.tick();
+  assert.deepEqual(events.find((e) => e.type === 'unread').ids, ['c', 'd']);
+  assert.deepEqual(sync.snapshot().unread, ['c', 'd']);
 
   // resume from snapshot
   const resumed = new AccountSync({ email: 'me@x.com', gmail, saved: JSON.parse(JSON.stringify(sync.snapshot())), save() {}, emit() {}, syncMonths: () => 12 });
@@ -237,4 +247,16 @@ test('Gmail client: a quota error pauses the limiter and the request then succee
   // gives up eventually, flagged as a rate limit so the UI can say so
   const always = new Gmail(async () => 'tok', async () => new Response(JSON.stringify(quota), { status: 429 }), { limiter: new RateLimiter({ now: () => t, wait: async (ms) => { t += ms; } }) });
   await assert.rejects(always.getMeta('x'), (e) => e.limited === true && e.status === 429);
+});
+
+test('toFull: an image the HTML references by Content-ID is inline whatever its disposition', () => {
+  const part = (cid, disp, name) => ({ mimeType: 'image/png', filename: name, headers: [{ name: 'Content-ID', value: `<${cid}>` }, { name: 'Content-Disposition', value: disp }], body: { attachmentId: `att-${name}`, size: 10 } });
+  const full = toFull({ id: '1', payload: { mimeType: 'multipart/related', parts: [
+    { mimeType: 'text/html', body: { data: b64u('<img src="cid:logo@x"><img src="cid:sig%40corp">') } },
+    part('logo@x', 'attachment; filename="logo.png"', 'logo.png'),
+    part('sig@corp', 'inline', 'sig.png'),
+    part('unused@x', 'inline', 'photo.png'),
+  ] } });
+  assert.deepEqual(full.inline.map((i) => i.cid), ['logo@x', 'sig@corp']);
+  assert.deepEqual(full.attachments.map((a) => a.filename), ['photo.png'], 'an unreferenced picture stays downloadable');
 });

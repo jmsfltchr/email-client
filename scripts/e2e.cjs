@@ -24,6 +24,27 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     assert.deepStrictEqual(names, ['Priya Raman', 'Helen Rowan', 'Marcus Oyelaran', 'Dana Whitfield']);
   });
 
+  await step('unread dots: shown for unread mail, cleared by opening', async () => {
+    const dots = (section) => page.locator(`section[aria-label="${section}"] .row:has(.unread) .who, section[aria-label="${section}"] .row:has(.unread) .subj`).allTextContents();
+    assert.deepStrictEqual(await page.locator('section[aria-label="Needs reply"] .row:has(.unread) .who').allTextContents(), ['Priya Raman', 'Helen Rowan']);
+    assert.equal(await page.locator('section[aria-label="Attention"] .row:has(.unread)').count(), 4);
+    await page.screenshot({ path: `${SP}/unread.png` });
+    await page.click('section[aria-label="Needs reply"] >> text=Helen Rowan');
+    await page.waitForSelector('.reader iframe');
+    assert.deepStrictEqual(await page.locator('section[aria-label="Needs reply"] .row:has(.unread) .who').allTextContents(), ['Priya Raman']);
+    await page.keyboard.press('Escape');
+  });
+
+  await step('email images: protocol-relative, lazy and srcset-only pictures get a loadable address', async () => {
+    const out = await page.evaluate(async () => {
+      const { sanitizeEmailHtml } = await import('./util.mjs');
+      const r = sanitizeEmailHtml('<img id="a" src="//cdn.example.com/a.png" loading="lazy"><img id="b" data-src="https://x.example/b.png"><img id="c" srcset="//x.example/c1.png 1x, https://x.example/c2.png 2x"><img id="d" src="data:image/png;base64,AAAA"><table background="//x.example/bg.png"></table>');
+      const d = new DOMParser().parseFromString(r.html, 'text/html');
+      return { remote: r.remoteImages, src: [...d.images].map((i) => i.getAttribute('src')), lazy: d.querySelector('[loading]') !== null, srcset: d.querySelector('[srcset]') !== null, bg: d.querySelector('table').getAttribute('background') };
+    });
+    assert.deepStrictEqual(out, { remote: true, src: ['https://cdn.example.com/a.png', 'https://x.example/b.png', 'https://x.example/c1.png', 'data:image/png;base64,AAAA'], lazy: false, srcset: false, bg: 'https://x.example/bg.png' });
+  });
+
   await step('bump moves an item to the top and stops it fading; undo restores', async () => {
     const who = () => page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
     const row = page.locator('section[aria-label="Needs reply"] .row', { hasText: 'Dana Whitfield' });

@@ -46,6 +46,8 @@ export function defaultState() {
     flagged: {}, // message key -> ts (manually escalated)
     acked: {}, // message key -> true (attention dismissed)
     done: {}, // message key -> true (needs-reply dismissed)
+    read: {}, // message key -> true: opened here while Gmail still has it unread
+    imageSenders: {}, // addr -> true: always load remote images from this sender
     bumped: {}, // message key -> ts of the last bump; stands in for the date when ordering and fading
     orgColor: {}, // root domain -> palette index
   };

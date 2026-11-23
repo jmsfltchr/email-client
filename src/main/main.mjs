@@ -174,7 +174,7 @@ const handlers = {
   bootstrap() {
     const messages = [];
     for (const s of syncs.values()) for (const m of s.messages.values()) messages.push(m);
-    return { demo: DEMO, accounts: publicAccounts(), hasOAuthClient: !!config.oauth, state: readJson('state.json', null), messages, photos: allPhotos(), photosDenied: photosDenied() };
+    return { demo: DEMO, accounts: publicAccounts(), hasOAuthClient: !!config.oauth, state: readJson('state.json', null), messages, photos: allPhotos(), photosDenied: photosDenied(), unread: Object.fromEntries([...syncs].map(([email, s]) => [email, [...s.unread]])) };
   },
 
   saveState(state) { writeJson('state.json', state); },
@@ -232,11 +232,13 @@ const handlers = {
     const full = await getFull(email, id);
     let html = full.html;
     // Inline images referenced by cid: become data URIs (bounded).
-    let budget = 12;
+    let budget = 30;
     for (const img of full.inline) {
-      if (!html.includes(`cid:${img.cid}`) || img.size > 3e6 || budget-- <= 0) continue;
-      const bytes = await attachmentBytes(email, id, img);
-      html = html.split(`cid:${img.cid}`).join(`data:${img.mime};base64,${bytes.toString('base64')}`);
+      const spellings = [`cid:${img.cid}`, `cid:${encodeURIComponent(img.cid)}`].filter((s, i, all) => html.includes(s) && all.indexOf(s) === i);
+      if (!spellings.length || img.size > 5e6 || budget-- <= 0) continue;
+      const bytes = await attachmentBytes(email, id, img).catch(() => null);
+      if (!bytes) continue;
+      for (const s of spellings) html = html.split(s).join(`data:${img.mime};base64,${bytes.toString('base64')}`);
     }
     const strip = ({ filename, mime, size }, index) => ({ index, filename, mime, size });
     return { ...full, html, inline: undefined, attachments: full.attachments.map(strip) };

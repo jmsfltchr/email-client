@@ -122,6 +122,16 @@ function decodeEntities(s) {
 
 const decodeBody = (data) => (data ? Buffer.from(data, 'base64url').toString('utf8') : '');
 
+/** Content-IDs referenced as cid: URLs in HTML (also in their URL-encoded spelling). */
+function decodeCidRefs(html) {
+  const out = new Set();
+  for (const m of html.matchAll(/cid:([^"'\s)>]+)/gi)) {
+    out.add(m[1]);
+    try { out.add(decodeURIComponent(m[1])); } catch { /* not encoded */ }
+  }
+  return out;
+}
+
 /** Gmail message resource (format=full) -> {headers, text, html, attachments, inline}. */
 export function toFull(msg) {
   const hs = msg.payload?.headers || [];
@@ -139,6 +149,7 @@ export function toFull(msg) {
     attachments: [], // {attId, filename, mime, size}
     inline: [], // {cid, attId, mime, size}
   };
+  const parts = [];
   const walk = (p) => {
     if (!p) return;
     const mime = (p.mimeType || '').toLowerCase();
@@ -147,13 +158,19 @@ export function toFull(msg) {
     if (p.parts?.length) { p.parts.forEach(walk); return; }
     if (p.filename || p.body?.attachmentId) {
       const rec = { attId: p.body?.attachmentId || null, data: p.body?.attachmentId ? undefined : p.body?.data, filename: p.filename || 'attachment', mime, size: p.body?.size || 0 };
-      if (cid && mime.startsWith('image/') && !disp.startsWith('attachment')) out.inline.push({ cid, ...rec });
-      else out.attachments.push(rec);
+      parts.push({ cid, disp, ...rec });
       return;
     }
     if (mime === 'text/html') out.html += decodeBody(p.body?.data);
     else if (mime === 'text/plain') out.text += decodeBody(p.body?.data);
   };
   walk(msg.payload);
+  // An image the HTML points at by Content-ID is part of the body, however the sender labelled it;
+  // everything else is an attachment.
+  const refs = decodeCidRefs(out.html);
+  for (const { cid, disp: _disp, ...rec } of parts) {
+    const inline = cid && rec.mime.startsWith('image/') && refs.has(cid);
+    if (inline) out.inline.push({ cid, ...rec }); else out.attachments.push(rec);
+  }
   return out;
 }

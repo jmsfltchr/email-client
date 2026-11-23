@@ -1,7 +1,7 @@
 import { html, render, useState, useMemo, useEffect, useRef, cx, ago, fullDate, displayName } from './util.mjs';
 import {
   S, api, init, set, useStore, passes, toggleIn, cutoffs, ageBand, accountOf, openMessage, closeReader,
-  markDone, undoDone, ack, bump, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
+  markDone, undoDone, ack, bump, isUnread, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
 } from './store.mjs';
 import { DAY, orderTopics, reorder, baseSubject } from '../core/classify.mjs';
 import { Compose, newDraft, startReply } from './compose.mjs';
@@ -136,6 +136,7 @@ function PersonRow({ m }) {
         <button class="btn small" title="Remove from this list without replying"
           onClick=${() => { markDone(m); toast('No reply needed', { action: 'Undo', onAction: () => { undoDone(m); set({ toast: null }); } }); }}>No reply needed</button>
       </span>
+      ${isUnread(m) && html`<span class="unread" title="Unread"></span>`}
       ${bumped && html`<span class="bumped" title=${`Bumped ${fullDate(bumped)}`}>↑</span>`}
       <span class=${cx('age', (band !== 'fresh' || bumped) && now - m.ts > S.user.settings.nearDays * DAY && 'wait')} title=${fullDate(m.ts)}>${now - m.ts > S.user.settings.nearDays * DAY ? `waiting ${ago(m.ts, now)}` : ago(m.ts, now)}</span>
     </div>`;
@@ -168,6 +169,7 @@ function AttentionRow({ m }) {
         <button class="btn small" title="Move to the top and keep it from fading (b)" onClick=${() => bump(m)}>Bump</button>
         <button class="btn small" onClick=${() => ack(m)}>${flagged ? 'Unflag' : 'Dismiss'}</button>
       </span>
+      ${isUnread(m) && html`<span class="unread" title="Unread"></span>`}
       ${S.user.bumped[m.key] && html`<span class="bumped" title=${`Bumped ${fullDate(S.user.bumped[m.key])}`}>↑</span>`}
       <span class="age" title=${fullDate(m.ts)}>${ago(m.ts, cutoffs().now)}</span>
     </div>`;

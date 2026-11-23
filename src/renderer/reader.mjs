@@ -1,5 +1,5 @@
 import { html, useState, useEffect, useMemo, useRef, cx, ago, fullDate, bytes, displayName, sanitizeEmailHtml, textToHtml } from './util.mjs';
-import { S, api, closeReader, markDone, ack, bump, toggleFlag, setSenderKind, toggleQuiet, toast, accountOf, set, setSetting } from './store.mjs';
+import { S, api, closeReader, markDone, ack, bump, toggleFlag, setSenderKind, toggleQuiet, toast, accountOf, set, setSetting, mutate } from './store.mjs';
 import { startReply, newDraft } from './compose.mjs';
 import { openLink } from './webpane.mjs';
 import { baseSubject } from '../core/classify.mjs';
@@ -26,16 +26,23 @@ const PLAIN_DARK_CSS = 'html{color-scheme:dark}body{color:#e9e7e1;background:#1e
 const HTML_DARK_CSS = 'html{background:#e1dfdb;filter:invert(1) hue-rotate(180deg)}body{background:transparent}img,video,picture>source{filter:invert(1) hue-rotate(180deg)}'
   + '::highlight(find){background:#4d4200;color:#fff}::highlight(find-current){background:#8a3d00;color:#fff}';
 
+// While remote images are held back, leave no broken-picture icons behind.
+const BLOCKED_CSS = 'img[src^="http"]{display:none!important}';
+
 const frameReady = new Set(); // listeners told whenever a message body (re)renders
 
-function EmailBody({ full }) {
-  const [images, setImages] = useState(S.user.settings.loadImages);
+function EmailBody({ full, m }) {
+  // Remote images load for people you correspond with and senders you have allowed; otherwise on request.
+  const trusted = S.user.settings.loadImages || m.kind === 'me' || m.kind === 'important' || !!S.user.imageSenders[m.from.addr];
+  const [shown, setShown] = useState(false);
+  const images = trusted || shown;
+  const setImages = setShown;
   const frame = useRef();
   const dark = S.user.settings.readerTheme !== 'light';
   const clean = useMemo(() => (full.html ? sanitizeEmailHtml(full.html) : { html: textToHtml(full.text || ''), remoteImages: false }), [full]);
   const srcdoc = useMemo(() => {
     const csp = `default-src 'none'; style-src 'unsafe-inline'; img-src data: ${images ? 'https: http:' : ''}; font-src data:`;
-    const theme = !dark ? '' : full.html ? HTML_DARK_CSS : PLAIN_DARK_CSS;
+    const theme = (!dark ? '' : full.html ? HTML_DARK_CSS : PLAIN_DARK_CSS) + (images ? '' : BLOCKED_CSS);
     // Theme rules come last so that they win over the email's own styles.
     return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${clean.html}<style>${theme}</style></body></html>`;
   }, [clean, images, dark]);
@@ -73,6 +80,7 @@ function EmailBody({ full }) {
     ${clean.remoteImages && !images && html`
       <div class="img-note">Remote images are hidden to block tracking.
         <button class="btn small" onClick=${() => setImages(true)}>Show images</button>
+        <button class="btn small" onClick=${() => mutate((u) => { u.imageSenders[m.from.addr] = true; })}>Always from ${m.from.addr}</button>
       </div>`}
     <div class=${cx('paper', dark && 'dark')}>
       <iframe ref=${frame} sandbox="allow-same-origin" srcdoc=${srcdoc} onLoad=${onLoad} title="Message body"></iframe>
@@ -192,7 +200,7 @@ function MessageCard({ m, open, onToggle }) {
         ${full && html`<div class="msg-rcpt">to ${full.headers.to || '—'}${full.headers.cc ? html` · cc ${full.headers.cc}` : ''}</div>`}
         ${!full && !error && html`<div class="empty">Loading…</div>`}
         ${error && html`<div class="empty err-text">Could not load this message: ${error}</div>`}
-        ${full && html`<${EmailBody} full=${full} />`}
+        ${full && html`<${EmailBody} full=${full} m=${m} />`}
         ${full?.attachments.length > 0 && html`
           <div class="atts">
             ${full.attachments.map((a) => html`

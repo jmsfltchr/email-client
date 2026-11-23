@@ -48,6 +48,8 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Faces and colours.** People are circles and organisations are rounded squares. A person shows their contact photo when your Google contacts have one, otherwise their initials. A notification channel shows its organisation's site icon at full size with no backing tile, otherwise its initial on a coloured square. The organisation's name is underlined in its brand colour, picked automatically as the dominant colour of the icon that is not near white, near black or grey; a monochrome logo gets a white underline (and a dark logo on a transparent background is inverted so it shows on the dark theme). An organisation with no icon gets a colour assigned from a fixed palette, which never changes. People at a company share its colour, while people on public mailboxes (gmail.com and similar) each get their own. Icons are fetched from Google's favicon service and cached; photos and icons can be turned off in Settings.
 
+**Unread dot.** Rows in Needs reply and Attention show a blue dot while Gmail still has the message unread and you have not opened it here. Reading it on your phone or in Gmail clears the dot within a minute; opening it in Stillmail clears it here only, because Stillmail never changes anything in Gmail. There is still no unread count.
+
 **Bump.** Any item in Needs reply or Attention can be bumped (row button, reader button, or `b`). It jumps to the top, and its bump date replaces its received date for ordering and fading, so it stays on the list while untouched items slip away. Bump again to keep it there. The age shown is still the real one, with an ↑ marker.
 
 **Time tabs.** Needs reply, Attention and Notifications each have their own 24h / 3d / 7d / 30d / 90d tabs, remembered separately. Needs reply and Attention use the bump date where there is one, and anything you flagged yourself stays in Attention whatever the tab. Needs reply keeps a *Show older* link so nobody is lost.
@@ -55,6 +57,8 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 **Links.** Clicking a link in an email opens the page in a browser pane to the right of the message, with back, forward, reload and *Open in default browser*. ⌘-click (Ctrl-click on Windows and Linux) sends a link straight to your default browser instead. The pane is an isolated web page with its own cookies; it has no access to your mail and no camera, microphone, location or notification permissions. `mailto:` links start a new message.
 
 **Reading.** A Light / Dark switch at the top of the reader sets how message bodies are shown, and is remembered. Earlier messages quoted inside a reply are folded behind a ••• button so each message shows only what is new; forwards are left open. ⌘F (Ctrl+F) finds text across the open conversation, with Enter and Shift+Enter to step through matches.
+
+**Images.** Pictures attached inside a message always show. Pictures fetched from the web load automatically in mail from people you correspond with and from senders you allow with *Always from …*; for other senders they are held back (they are how senders track opens) until you click *Show images*. Settings has a switch to load them everywhere.
 
 **Fading.** Mail is at full strength for 7 days, dimmed until 30 days, then leaves the home view and lives on in Search. Both cutoffs are settings.
 

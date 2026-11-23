@@ -24,6 +24,7 @@ export class AccountSync {
     this.syncMonths = syncMonths;
     this.messages = new Map((saved?.messages || []).map((m) => [m.id, m]));
     this.historyId = saved?.historyId || null;
+    this.unread = new Set(saved?.unread || []); // ids Gmail currently marks unread (recent mail only)
     this.backfillDone = !!saved?.backfillDone;
     this.horizon = saved?.horizon ?? null;
     this.running = false;
@@ -31,7 +32,7 @@ export class AccountSync {
   }
 
   snapshot() {
-    return { historyId: this.historyId, backfillDone: this.backfillDone, horizon: this.horizon, messages: [...this.messages.values()] };
+    return { historyId: this.historyId, backfillDone: this.backfillDone, horizon: this.horizon, unread: [...this.unread], messages: [...this.messages.values()] };
   }
 
   stop() { this.stopped = true; }
@@ -42,8 +43,8 @@ export class AccountSync {
     this.running = true;
     try {
       if (this.horizon !== this.syncMonths()) this.backfillDone = false; // horizon changed: top up
-      if (!this.backfillDone) await this.backfill();
-      else await this.incremental();
+      if (!this.backfillDone) { await this.refreshUnread(); await this.backfill(); } else await this.incremental();
+      await this.refreshUnread();
       this.emit({ type: 'progress', acct: this.email, phase: 'idle', at: Date.now() });
     } catch (e) {
       const auth = e.code === 'invalid_grant' || e.status === 401;
@@ -54,6 +55,20 @@ export class AccountSync {
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * Mirror Gmail's unread state for recent mail. Re-read in full each pass (a cheap id listing), so
+   * mail read on another device loses its marker here too. Stillmail itself never changes it.
+   */
+  async refreshUnread() {
+    const ids = [];
+    for await (const id of this.gmail.listIds(`is:unread newer_than:90d ${EXCLUDE}`, { max: 5000 })) ids.push(id);
+    const same = ids.length === this.unread.size && ids.every((id) => this.unread.has(id));
+    if (same) return;
+    this.unread = new Set(ids);
+    this.emit({ type: 'unread', acct: this.email, ids });
+    this.save();
   }
 
   async backfill() {

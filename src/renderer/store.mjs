@@ -12,6 +12,7 @@ export const S = {
   accounts: [],
   hasOAuthClient: false,
   messages: new Map(),
+  unread: {}, // account -> Set of message ids Gmail marks unread
   photos: {}, // address -> contact photo URL
   photosDenied: [], // accounts signed in without the contacts permission
   user: normaliseState(null),
@@ -118,7 +119,29 @@ export const accountOf = (email) => S.accounts.find((a) => a.email === email) ||
 
 // ------------------------------------------------------------ actions
 
-export function openMessage(m) { set({ open: { acct: m.acct, threadId: m.threadId, key: m.key } }); }
+/** Unread in Gmail and not yet opened here. */
+export const isUnread = (m) => !!S.unread[m.acct]?.has(m.id) && !S.user.read[m.key];
+
+export function openMessage(m) {
+  set({ open: { acct: m.acct, threadId: m.threadId, key: m.key } });
+  // Opening a conversation reads it (locally: Stillmail does not change anything in Gmail).
+  const fresh = (S.model?.threads.get(`${m.acct}:${m.threadId}`) || [m]).filter(isUnread);
+  if (!fresh.length) return;
+  for (const x of fresh) S.user.read[x.key] = true;
+  saveSoon();
+}
+
+function setUnread(acct, ids) {
+  const now = new Set(ids);
+  S.unread = { ...S.unread, [acct]: now };
+  // Forget local read marks for mail Gmail no longer has as unread.
+  let pruned = false;
+  for (const key of Object.keys(S.user.read)) {
+    if (key.startsWith(`${acct}:`) && !now.has(key.slice(acct.length + 1))) { delete S.user.read[key]; pruned = true; }
+  }
+  if (pruned) saveSoon();
+  notify();
+}
 export function closeReader() { set({ open: null, web: null, finding: false }); }
 
 export function toast(text, { action, onAction, ms = 4000 } = {}) {
@@ -187,6 +210,8 @@ function onEvent(e) {
     notify();
   } else if (e.type === 'error') {
     set({ errors: { ...S.errors, [e.acct]: e.message } });
+  } else if (e.type === 'unread') {
+    setUnread(e.acct, e.ids || []);
   } else if (e.type === 'photos') {
     set({ photos: e.photos || {}, photosDenied: e.denied || [] });
   } else if (e.type === 'accounts') {
@@ -213,6 +238,7 @@ export async function init() {
   S.messages = new Map(boot.messages.map((m) => [m.key, m]));
   S.photos = boot.photos || {};
   S.photosDenied = boot.photosDenied || [];
+  S.unread = Object.fromEntries(Object.entries(boot.unread || {}).map(([acct, ids]) => [acct, new Set(ids)]));
   api.onEvent(onEvent);
   S.ready = true;
   rebuild();
