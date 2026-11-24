@@ -102,7 +102,7 @@ export function openConversation(link, event) {
   const { chats, active } = S.testers;
   const cur = chats[link.platform];
   const reuse = cur && cur.url === link.url && active !== link.platform; // already there: just bring it forward
-  T({ chats: { ...chats, [link.platform]: reuse ? cur : { url: link.url, n: (cur?.n || 0) + 1, at: link.url, title: '' } }, active: link.platform });
+  T({ chats: { ...chats, [link.platform]: reuse ? cur : { url: link.url, n: (cur?.n || 0) + 1, at: link.url, title: '' } }, active: link.platform, browser: true });
   return follow();
 }
 
@@ -114,11 +114,14 @@ function openInbox(platform, event) {
   return openConversation({ platform, url: INBOX[platform] }, event);
 }
 
-function showChat(platform) { T({ active: platform }); follow(); }
+function showChat(platform) { T({ active: platform, browser: true }); follow(); }
+
+/** Show the browser with its tabs; nothing is loaded until a tab is chosen. */
+function openBrowser() { if (S.open) closeReader(); T({ browser: true }); follow(); }
 
 function closeChat(platform) {
   const { [platform]: _, ...chats } = S.testers.chats;
-  T({ chats, active: Object.keys(chats)[0] || null, wide: Object.keys(chats).length ? S.testers.wide : false });
+  T({ chats, active: null });
   follow();
 }
 
@@ -231,10 +234,7 @@ function People() {
         <span class="hint">${rows.length} ${rows.length === 1 ? 'person' : 'people'} in <a href=${status.url} onClick=${(e) => { e.preventDefault(); if (status.url) api.openExternal(status.url); }}>${status.title}</a></span>
         <button class="btn small" disabled=${loading} onClick=${() => loadTesters()} title="Fetch the latest from Notion">${loading ? 'Loading…' : 'Refresh'}</button>
         ${!S.demo && html`<button class="btn small" onClick=${() => T({ connecting: true })}>Connection…</button>`}
-      </div>
-      <div class="t-inboxes" role="group" aria-label="Open an inbox">
-        <span>Open inbox</span>
-        ${Object.keys(INBOX).map((p) => html`<button class=${cx('chat-tab', S.testers.active === p && 'on')} key=${p} title=${`Open ${PLATFORMS[p].name} beside the list. Opening a conversation there shows its person here.`} onClick=${(e) => openInbox(p, e)}><${Badge} platform=${p} />${PLATFORMS[p].name}</button>`)}
+        ${!S.testers.browser && S.canEmbed && html`<button class="btn small primary t-browse" onClick=${openBrowser} title="Open Instagram, Discord, Slack or Teams beside the list and work from there">Open browser</button>`}
       </div>
       ${error && html`<div class="banner t-error"><span>${error}</span><button onClick=${() => loadTesters()}>Try again</button></div>`}
       <div class="t-tools">
@@ -417,13 +417,26 @@ function Unlinked({ here }) {
 function Chats({ off }) {
   const { chats, active, wide } = S.testers;
   const open = Object.keys(chats);
+  // The four services always have a tab; one that has not been opened loads only when clicked.
+  const tabs = [...Object.keys(INBOX), ...open.filter((p) => !INBOX[p])];
+  const tab = (p) => html`
+    <button key=${p} class=${cx('chat-tab', p === active && 'on', !chats[p] && 'idle')} aria-pressed=${p === active} title=${chats[p] ? PLATFORMS[p].name : `Open ${PLATFORMS[p].name}`}
+      onClick=${(e) => (chats[p] ? showChat(p) : openInbox(p, e))}><${Badge} platform=${p} />${PLATFORMS[p].name}</button>`;
   return html`
     <div class=${cx('chat-stack', off && 'off')}>
       <div class="chat-tabs">
-        <button class="btn ghost small" onClick=${() => T({ wide: !wide })} title=${wide ? 'Show the list of people' : 'Give the conversation the whole window'}>${wide ? '⇥ People' : '⇤ Wider'}</button>
-        ${open.map((p) => html`<button key=${p} class=${cx('chat-tab', p === active && 'on')} aria-pressed=${p === active} onClick=${() => showChat(p)}><${Badge} platform=${p} />${PLATFORMS[p].name}</button>`)}
+        <button class="btn ghost small" onClick=${() => T({ wide: !wide })} title=${wide ? 'Show the list of people' : 'Give the browser the whole window'}>${wide ? '⇥ People' : '⇤ Wider'}</button>
+        ${tabs.map(tab)}
+        <span class="sp"></span>
+        <button class="btn ghost small" onClick=${() => T({ browser: false, wide: false })} title="Hide the browser. Pages that are open stay signed in and loaded." aria-label="Hide browser">Hide</button>
       </div>
       <div class="chat-panes">
+        ${!active && html`
+          <div class="chat-empty">
+            <p>Choose where to go. Nothing loads until you pick one; after that it stays open in its tab.</p>
+            <div class="picks">${Object.keys(INBOX).map((p) => html`<button class="btn" key=${p} onClick=${(e) => openInbox(p, e)}><${Badge} platform=${p} />${PLATFORMS[p].name}</button>`)}</div>
+            <p>Open a conversation there and its person shows beside it, or you are offered to add them.</p>
+          </div>`}
         ${open.map((p) => html`<${Browser} key=${p} url=${chats[p].url} n=${chats[p].n} partition=${CHAT_PARTITION} off=${p !== active} onLocation=${(loc) => onLocation(p, loc)} label=${`${PLATFORMS[p].name} conversation`} onClose=${() => closeChat(p)} />`)}
       </div>
     </div>`;
@@ -441,9 +454,9 @@ export function Testers({ shown }) {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, []);
-  const chatting = !!t.active;
+  const chatting = t.browser;
   const row = t.rows.find((r) => r.id === t.sel);
-  const unlinked = chatting && t.here && t.dismissed !== t.here.key && !ownerOf(t.here.key) ? t.here : null;
+  const unlinked = chatting && t.active && t.here && t.dismissed !== t.here.key && !ownerOf(t.here.key) ? t.here : null;
   const ready = t.status?.connected && t.schema && !t.connecting;
   return html`
     <main class=${cx('testers', !shown && 'off', chatting && 'chatting', chatting && t.wide && !S.open && 'wide')}>
@@ -451,6 +464,6 @@ export function Testers({ shown }) {
         : !t.status ? html`<div class="empty">${t.error || 'Loading…'}</div>`
         : t.status.connected && !t.connecting ? html`<div class="empty">${t.error ? html`${t.error} <button class="btn small" onClick=${() => loadTesters()}>Try again</button> <button class="btn small" onClick=${() => T({ connecting: true })}>Connection…</button>` : 'Loading from Notion…'}</div>`
         : html`<div class="main" style=${{ flex: 1 }}><${Connection} /></div>`}
-      ${chatting && html`<${Chats} off=${!shown || !!S.open} />`}
+      ${(chatting || Object.keys(t.chats).length > 0) && html`<${Chats} off=${!shown || !!S.open || !chatting} />`}
     </main>`;
 }

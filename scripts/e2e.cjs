@@ -344,6 +344,18 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.waitForSelector('.web webview');
     await page.locator('.web-url', { hasText: 'Local test page' }).waitFor();
     assert.match(await page.locator('.web-url b').textContent(), /^127\.0\.0\.1:/);
+    // the address box shows site and title; under the pointer it shows the full address, and a click copies it
+    assert.ok(await page.locator('.web-url .pretty').isVisible());
+    assert.ok(!(await page.locator('.web-url .raw').isVisible()));
+    await page.hover('.web-url');
+    assert.equal(await page.locator('.web-url .raw .addr').textContent(), `${base}/one`);
+    assert.ok(!(await page.locator('.web-url .pretty').isVisible()));
+    await app.evaluate(({ clipboard }) => clipboard.writeText('nothing yet'));
+    await page.click('.web-url');
+    await page.locator('.web-url .copy', { hasText: 'Copied' }).waitFor();
+    assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), `${base}/one`);
+    await shot('address-copy');
+    await page.mouse.move(5, 5);
     assert.deepStrictEqual(await opened(), [`${base}/one`], 'plain click stays in the app');
     assert.ok(await page.locator('.reader').isVisible(), 'reader stays beside the page');
     await page.screenshot({ path: `${SP}/web.png` });
@@ -585,8 +597,14 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.locator('.reader-h h1').click();
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('.chat-stack.off').count(), 0);
+    // closing a page leaves its tab in place, unloaded; hiding the browser gives the list its room back
     await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    await page.waitForSelector('.chat-empty');
+    assert.equal(await page.locator('.chat-tabs .chat-tab').count(), 4);
+    await page.locator('.chat-tabs .chat-tab:not(.idle)').click();
     await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    assert.equal(await page.locator('.chat-stack webview').count(), 0);
+    await page.click('[aria-label="Hide browser"]');
     assert.equal(await page.locator('.chat-stack').count(), 0);
     // add and remove a person
     await page.fill('[aria-label="Add a person"]', 'Zed Tester');
@@ -606,8 +624,16 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.keyboard.press('t');
     await page.waitForSelector('.t-list .row');
     // start from an inbox: nobody is selected by it
-    await page.locator('.t-inboxes button', { hasText: 'Discord' }).click();
+    // the browser opens with a tab per service and nothing loaded
+    await page.click('.t-browse');
+    await page.waitForSelector('.chat-empty');
+    assert.deepStrictEqual(await page.locator('.chat-tabs .chat-tab.idle').allTextContents(), ['IGInstagram', 'DCDiscord', 'SLSlack', 'TMTeams']);
+    assert.equal(await page.locator('.chat-stack webview').count(), 0);
+    await shot('testers-browser');
+    await page.locator('.chat-tabs .chat-tab', { hasText: 'Discord' }).click();
     await page.waitForSelector('.chat-stack webview');
+    assert.equal(await page.locator('.chat-stack webview').count(), 1);
+    assert.equal(await page.locator('.chat-tabs .chat-tab.idle').count(), 3);
     assert.equal((await state()).active, 'discord');
     assert.equal(await page.locator('.t-unlinked').count(), 0);
     // moving to a linked conversation (even a message inside it) opens its person
@@ -631,7 +657,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await land('discord', 'https://discord.com/channels/@me/999000000000000001');
     assert.equal((await state()).sel, 'Nadia Farouk');
     // another unknown conversation is linked to an existing person by searching
-    await page.locator('.t-inboxes button', { hasText: 'Slack' }).click();
+    await page.locator('.chat-tabs .chat-tab', { hasText: 'Slack' }).click();
     await land('slack', 'https://app.slack.com/client/T0FERNHILL/D0TOMAS99', 'Tomás (DM) - Fernhill - Slack');
     await page.waitForSelector('.t-unlinked');
     assert.equal(await page.locator('.t-found button').count(), 0);
@@ -652,8 +678,14 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     // switching panes follows the pane now in front
     await page.locator('.chat-tabs .chat-tab', { hasText: 'Discord' }).click();
     assert.equal((await state()).sel, 'Nadia Farouk');
+    // closing a page leaves its tab in place, unloaded; hiding the browser gives the list its room back
     await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    await page.waitForSelector('.chat-empty');
+    assert.equal(await page.locator('.chat-tabs .chat-tab').count(), 4);
+    await page.locator('.chat-tabs .chat-tab:not(.idle)').click();
     await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    assert.equal(await page.locator('.chat-stack webview').count(), 0);
+    await page.click('[aria-label="Hide browser"]');
   });
 
   await step('settings renders', async () => {

@@ -200,7 +200,14 @@ a { color: var(--accent); }
 /* ---------- browser pane */
 .web { border-left: 1px solid var(--line); background: var(--sunken); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .web-bar { display: flex; align-items: center; gap: 4px; padding: 8px 10px; background: var(--surface); }
-.web-url { flex: 1; min-width: 0; margin: 0 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+.web-url { flex: 1; min-width: 0; margin: 0 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); font-size: 12.5px; white-space: nowrap; overflow: hidden; color: var(--ink-2); text-align: left; cursor: copy; display: block; }
+.web-url .pretty { display: block; overflow: hidden; text-overflow: ellipsis; }
+.web-url .raw { display: none; align-items: center; gap: 10px; }
+.web-url .raw .addr { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.web-url .raw .copy { flex: none; color: var(--accent); font-weight: 600; }
+.web-url:hover, .web-url:focus-visible, .web-url.copied { border-color: var(--muted); }
+.web-url:hover .pretty, .web-url:focus-visible .pretty, .web-url.copied .pretty { display: none; }
+.web-url:hover .raw, .web-url:focus-visible .raw, .web-url.copied .raw { display: flex; }
 .web-url b { color: var(--ink); font-weight: 600; }
 .web-url .insecure { color: var(--warn); }
 .web-progress { height: 2px; background: var(--line); overflow: hidden; }
@@ -231,11 +238,6 @@ a { color: var(--accent); }
 .t-tools .input:first-child { flex: 2; }
 .t-tools .input { flex: 1; min-width: 0; }
 .t-tags, .t-multi, .t-rowtags { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
-.t-inboxes { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; color: var(--muted); font-size: 12px; }
-.t-inboxes span:first-child { margin-right: 4px; }
-.t-inboxes .chat-tab { border: 1px solid var(--line); border-radius: 7px; padding: 2px 9px 2px 3px; background: var(--surface); }
-.t-inboxes .chat-tab:hover, .t-inboxes .chat-tab.on { border-color: var(--muted); color: var(--ink); }
-.testers.chatting .t-inboxes span:first-child { display: none; }
 .t-unlinked .ttl { flex: 1; font: 600 16px var(--serif); margin-left: 4px; }
 .t-unlinked .note { color: var(--ink-2); margin: 14px 0 0; }
 .t-found { display: flex; flex-direction: column; margin-top: 6px; }
@@ -304,6 +306,14 @@ a { color: var(--accent); }
 .chat-tabs { display: flex; gap: 4px; align-items: center; padding: 6px 10px 0; background: var(--surface); }
 .chat-tab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-bottom: 0; background: none; border-radius: 7px 7px 0 0; padding: 4px 10px; color: var(--ink-2); font-size: 12.5px; }
 .chat-tab.on { background: var(--bg); border-color: var(--line); color: var(--ink); font-weight: 600; }
+.chat-tab:hover { color: var(--ink); }
+/* a service that has not been opened yet: present, but nothing is loaded */
+.chat-tab.idle .plat { background: none; border-style: dashed; opacity: .75; }
+.chat-tabs .sp { flex: 1; }
+.chat-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--ink-2); background: var(--sunken); text-align: center; padding: 24px; }
+.chat-empty p { margin: 0; max-width: 44ch; }
+.chat-empty .picks { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.chat-empty .picks button { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px 6px 7px; }
 .chat-panes { flex: 1; min-height: 0; position: relative; }
 .chat-panes > .web { position: absolute; inset: 0; border-left: 0; }
 
