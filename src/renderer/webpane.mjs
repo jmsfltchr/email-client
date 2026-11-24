@@ -54,6 +54,17 @@ export function Browser({ url, n, partition, onClose, onLocation, off = false, l
   // Tell the owner where the page is now (it moves as links are followed inside it).
   useEffect(() => { onLocation?.({ url: st.url, title: st.title }); }, [st.url, st.title]);
 
+  const [copied, setCopied] = useState(false);
+  const copyUrl = async () => {
+    try { await navigator.clipboard.writeText(st.url); } catch {
+      // clipboard API unavailable: fall back to copying from a throwaway field
+      const ta = Object.assign(document.createElement('textarea'), { value: st.url });
+      document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   const act = (fn) => () => { try { fn(view.current); } catch { /* not ready */ } };
   let host = '';
   try { host = new URL(st.url).host; } catch { /* keep empty */ }
@@ -63,10 +74,12 @@ export function Browser({ url, n, partition, onClose, onLocation, off = false, l
         <button class="btn ghost small" disabled=${!st.back} onClick=${act((w) => w.goBack())} title="Back" aria-label="Back">←</button>
         <button class="btn ghost small" disabled=${!st.forward} onClick=${act((w) => w.goForward())} title="Forward" aria-label="Forward">→</button>
         <button class="btn ghost small" onClick=${act((w) => (st.loading ? w.stop() : w.reload()))} title=${st.loading ? 'Stop' : 'Reload'} aria-label=${st.loading ? 'Stop' : 'Reload'}>${st.loading ? '✕' : '↻'}</button>
-        <div class="web-url" title=${st.url}>
-          <span class=${cx('lock', !st.url.startsWith('https:') && 'insecure')}>${st.url.startsWith('https:') ? '' : 'Not secure · '}</span><b>${host}</b>
-          ${st.title && html`<span class="web-title"> — ${st.title}</span>`}
-        </div>
+        <!-- at rest: site and page title; under the pointer (or keyboard focus): the full address, click to copy -->
+        <button class=${cx('web-url', copied && 'copied')} onClick=${copyUrl} aria-label=${`Copy address: ${st.url}`}>
+          <span class="pretty"><span class=${cx('lock', !st.url.startsWith('https:') && 'insecure')}>${st.url.startsWith('https:') ? '' : 'Not secure · '}</span><b>${host}</b>
+            ${st.title && html`<span class="web-title"> — ${st.title}</span>`}</span>
+          <span class="raw"><span class="addr">${st.url}</span><span class="copy">${copied ? '✓ Copied' : '⧉ Copy'}</span></span>
+        </button>
         <button class="btn small" onClick=${() => api.openExternal(st.url)} title="Open this page in your default browser. Tip: ⌘-click (Ctrl-click) a link to go straight there.">Open in default browser</button>
         <button class="btn ghost small" onClick=${onClose} title=${`Close ${label.toLowerCase()}`} aria-label=${`Close ${label.toLowerCase()}`}>✕</button>
       </div>
