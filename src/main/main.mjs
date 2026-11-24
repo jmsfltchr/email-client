@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, powerMonitor, nativeTheme, session, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, powerMonitor, nativeTheme, session, nativeImage, webContents } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -415,7 +415,30 @@ function setupWebPane() {
   });
 }
 
+// Some messaging sites (Discord for one) keep the sign-in token out of storage while the page is open and
+// write it back as the page unloads. A webview torn down with its window never unloads, so the sign-in
+// would be gone on the next start. Before the window goes, each conversation is navigated away so it
+// unloads like a closed tab, then the partition's storage is written to disk.
+let chatsSettled = null; // promise once under way; cleared when a new window opens
+function settleChats() {
+  chatsSettled ??= (async () => {
+    const chat = session.fromPartition(CHAT_PARTITION);
+    const pages = webContents.getAllWebContents().filter((c) => !c.isDestroyed() && c.getType() === 'webview' && c.session === chat);
+    for (const c of pages) c.on('will-prevent-unload', (e) => e.preventDefault()); // "leave site?" must not hold up quitting
+    await Promise.race([
+      Promise.all(pages.map((c) => c.loadURL('about:blank').catch(() => {}))),
+      new Promise((done) => setTimeout(done, 2000)),
+    ]);
+    await chat.flushStorageData();
+    await chat.cookies.flushStore().catch(() => {});
+  })();
+  return chatsSettled;
+}
+let chatsDone = false;
+
 function createWindow() {
+  chatsSettled = null;
+  chatsDone = false;
   win = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -442,6 +465,11 @@ function createWindow() {
     e.preventDefault();
     handlers.openExternal(url);
   });
+  win.on('close', (e) => {
+    if (chatsDone) return;
+    e.preventDefault();
+    settleChats().finally(() => { chatsDone = true; win?.close(); });
+  });
   win.on('closed', () => { win = null; });
 }
 
@@ -466,6 +494,11 @@ if (!app.requestSingleInstanceLock()) {
     powerMonitor.on('resume', () => handlers.syncNow());
     app.on('activate', () => { if (!win) createWindow(); else handlers.focusWindow(); });
   });
-  app.on('before-quit', () => { for (const email of syncs.keys()) flushSave(email); });
+  app.on('before-quit', (e) => {
+    for (const email of syncs.keys()) flushSave(email);
+    if (!win || chatsDone) return;
+    e.preventDefault(); // quit again once the conversations have unloaded
+    settleChats().finally(() => { chatsDone = true; app.quit(); });
+  });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 }
