@@ -38,6 +38,49 @@ export function platformOf(url) {
   return 'web';
 }
 
+/**
+ * The conversation a web address shows, if it shows one: {platform, key, url}. Two addresses for the same
+ * conversation give the same key (a Slack "archives" link and the address the Slack app settles on, a Discord
+ * channel and a message inside it). An inbox, a profile or any other page gives null.
+ */
+export function conversationOf(url) {
+  const platform = platformOf(url);
+  if (!platform || platform === 'web') return null;
+  const u = new URL(url);
+  let m;
+  if (platform === 'instagram') {
+    m = u.pathname.match(/^\/direct\/t\/([\w.-]+)/);
+    return m ? { platform, key: `instagram:${m[1]}`, url: `https://www.instagram.com/direct/t/${m[1]}/` } : null;
+  }
+  if (platform === 'discord') {
+    m = u.pathname.match(/^\/channels\/(@me|\d+)\/(\d+)/);
+    return m ? { platform, key: `discord:${m[2]}`, url: `https://discord.com/channels/${m[1]}/${m[2]}` } : null;
+  }
+  if (platform === 'slack') {
+    m = u.pathname.match(/^\/client\/([A-Z0-9]+)\/([CDG][A-Z0-9]{5,})/);
+    if (m) return { platform, key: `slack:${m[2]}`, url: `https://app.slack.com/client/${m[1]}/${m[2]}` };
+    m = u.pathname.match(/^\/(?:archives|messages)\/([CDG][A-Z0-9]{5,})/);
+    return m ? { platform, key: `slack:${m[1]}`, url: `${u.origin}/archives/${m[1]}` } : null;
+  }
+  // Teams: a chat is named by its thread id, or (in "chat with these people" links) by the people.
+  let text = u.href;
+  try { text = decodeURIComponent(text); } catch { /* keep as is */ }
+  m = text.match(/19:[\w-]+@(?:thread\.\w+|unq\.gbl\.spaces)/);
+  if (m) return { platform, key: `teams:${m[0].toLowerCase()}`, url };
+  const users = u.searchParams.get('users');
+  return users ? { platform, key: `teams:users:${users.toLowerCase().split(',').map((s) => s.trim()).sort().join(',')}`, url } : null;
+}
+
+const TITLE_NOISE = /^(instagram|discord|slack|microsoft teams|teams|chats?|inbox|direct|messages?|friends|threads|activity|new message|\d+ new items?)$/i;
+
+/** A guess at who a conversation is with, from the page title ("alice (DM) - Acme - Slack" -> "alice"). */
+export function nameFromTitle(title) {
+  const parts = String(title || '').replace(/^[•*!\s]+/, '').replace(/^\(\d+\+?\)\s*/, '').split(/\s+[|•·–—-]\s+/)
+    .map((p) => p.replace(/^\(\d+\+?\)\s*/, '').replace(/^[@#]/, '').replace(/\s*\((DM|you|private)\)\s*$/i, '').trim())
+    .filter((p) => p && !TITLE_NOISE.test(p));
+  return parts[0] || '';
+}
+
 /** Turn what someone typed or pasted into a link: a web address, an email address, or null. */
 export function linkFromInput(input, label = '') {
   const text = String(input || '').trim();

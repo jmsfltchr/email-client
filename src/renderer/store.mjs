@@ -31,7 +31,7 @@ export const S = {
   errors: {},
   toast: null,
   // Testers tab: people tracked in a Notion database, and their conversations open in browser panes.
-  testers: { visited: false, status: null, loading: false, error: null, schema: null, rows: [], sel: null, q: '', tags: new Set(), chats: {}, active: null, wide: false, connecting: false },
+  testers: { visited: false, status: null, loading: false, error: null, schema: null, rows: [], sel: null, q: '', tags: new Set(), chats: {}, active: null, here: null, dismissed: null, wide: false, connecting: false },
 };
 
 export let api = null;

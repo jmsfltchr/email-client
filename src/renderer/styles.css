@@ -231,6 +231,19 @@ a { color: var(--accent); }
 .t-tools .input:first-child { flex: 2; }
 .t-tools .input { flex: 1; min-width: 0; }
 .t-tags, .t-multi, .t-rowtags { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.t-inboxes { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; color: var(--muted); font-size: 12px; }
+.t-inboxes span:first-child { margin-right: 4px; }
+.t-inboxes .chat-tab { border: 1px solid var(--line); border-radius: 7px; padding: 2px 9px 2px 3px; background: var(--surface); }
+.t-inboxes .chat-tab:hover, .t-inboxes .chat-tab.on { border-color: var(--muted); color: var(--ink); }
+.testers.chatting .t-inboxes span:first-child { display: none; }
+.t-unlinked .ttl { flex: 1; font: 600 16px var(--serif); margin-left: 4px; }
+.t-unlinked .note { color: var(--ink-2); margin: 14px 0 0; }
+.t-found { display: flex; flex-direction: column; margin-top: 6px; }
+.t-found button { display: flex; align-items: center; gap: 5px; border: 0; border-top: 1px solid var(--line); background: none; padding: 7px 6px; text-align: left; }
+.t-found button:first-child { border-top: 0; }
+.t-found button:hover { background: var(--accent-soft); }
+.t-found .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.t-linkhere { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 3px; margin: 2px 0 4px; }
 .t-error { border-radius: 8px; background: var(--warn-soft); }
 .t-error span { flex: 1; }
 .t-list { overflow-y: auto; min-height: 0; flex: 0 1 auto; }

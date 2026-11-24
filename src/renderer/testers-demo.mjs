@@ -40,7 +40,7 @@ export function createDemoNotion() {
     async notionDisconnect() { throw new Error('Not available in demo mode'); },
     async notionLoad() { return { schema: copy(schema), rows: copy(rows) }; },
     async notionCreate(patch) {
-      const r = { id: `demo-new-${++n}`, url: 'https://www.notion.so/', name: patch.name || '', links: [], edited: Date.now(), values: { Tags: [], Stage: '', Interviewed: false, Notes: '' } };
+      const r = { id: `demo-new-${++n}`, url: 'https://www.notion.so/', name: patch.name || '', links: copy(patch.links || []), edited: Date.now(), values: { Tags: [], Stage: '', Interviewed: false, Notes: '' } };
       rows.push(r);
       return copy(r);
     },
