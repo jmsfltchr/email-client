@@ -599,6 +599,63 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.locator('.t-list .row', { hasText: 'Zed Tester' }).waitFor();
   });
 
+  await step('testers: the list follows the browser pane; an unknown conversation can be added or linked', async () => {
+    // (the pane reports each page it lands on; here the reports are made directly, as the demo cannot sign in anywhere)
+    const land = (platform, url, title = '') => page.evaluate(async ([p, u, t]) => (await import('./testers.mjs')).onLocation(p, { url: u, title: t }), [platform, url, title]);
+    const state = () => page.evaluate(async () => { const t = (await import('./store.mjs')).S.testers; return { sel: t.rows.find((r) => r.id === t.sel)?.name ?? null, active: t.active, links: t.rows.map((r) => [r.name, r.links.length]) }; });
+    await page.keyboard.press('t');
+    await page.waitForSelector('.t-list .row');
+    // start from an inbox: nobody is selected by it
+    await page.locator('.t-inboxes button', { hasText: 'Discord' }).click();
+    await page.waitForSelector('.chat-stack webview');
+    assert.equal((await state()).active, 'discord');
+    assert.equal(await page.locator('.t-unlinked').count(), 0);
+    // moving to a linked conversation (even a message inside it) opens its person
+    await land('discord', 'https://discord.com/channels/300000000000000001/300000000000000002/77', 'Discord | #alpha-feedback');
+    await page.locator('.t-detail .t-name').waitFor();
+    assert.equal((await state()).sel, 'Marcus Oyelaran');
+    // an unknown conversation offers to add its person, with the name guessed from the page
+    await land('discord', 'https://discord.com/channels/@me/999000000000000001', '(2) Discord | @nadia');
+    await page.waitForSelector('.t-unlinked');
+    assert.equal(await page.inputValue('[aria-label="New tester\'s name"]'), 'nadia');
+    await shot('testers-unlinked');
+    await page.fill('[aria-label="New tester\'s name"]', 'Nadia Farouk');
+    await page.click('.t-unlinked >> text=Add tester');
+    await page.locator('.t-list .row.sel', { hasText: 'Nadia Farouk' }).waitFor();
+    assert.equal(await page.locator('.t-unlinked').count(), 0);
+    assert.deepStrictEqual(await page.locator('.t-detail .t-link .open').allTextContents(), ['DCDiscord']);
+    // going back to an inbox leaves the details alone; returning to her conversation finds her again
+    await page.locator('.t-list .row', { hasText: 'Dana Whitfield' }).click();
+    await land('discord', 'https://discord.com/channels/@me');
+    assert.equal((await state()).sel, 'Dana Whitfield');
+    await land('discord', 'https://discord.com/channels/@me/999000000000000001');
+    assert.equal((await state()).sel, 'Nadia Farouk');
+    // another unknown conversation is linked to an existing person by searching
+    await page.locator('.t-inboxes button', { hasText: 'Slack' }).click();
+    await land('slack', 'https://app.slack.com/client/T0FERNHILL/D0TOMAS99', 'Tomás (DM) - Fernhill - Slack');
+    await page.waitForSelector('.t-unlinked');
+    assert.equal(await page.locator('.t-found button').count(), 0);
+    await page.fill('[aria-label="Search existing testers"]', 'lind');
+    await page.locator('.t-found button', { hasText: 'Tomás Lindqvist' }).click();
+    await page.locator('.t-detail .t-link', { hasText: 'Slack' }).waitFor();
+    assert.equal((await state()).sel, 'Tomás Lindqvist');
+    assert.equal(await page.locator('.t-unlinked').count(), 0);
+    // "not now" hides the offer; the open conversation can still be linked from someone's details
+    await land('slack', 'https://app.slack.com/client/T0FERNHILL/D0OTHER123');
+    await page.waitForSelector('.t-unlinked');
+    await page.click('.t-unlinked [aria-label="Not now"]');
+    assert.equal(await page.locator('.t-unlinked').count(), 0);
+    await page.locator('.t-list .row', { hasText: 'Dana Whitfield' }).click();
+    await page.click('.t-linkhere');
+    await page.locator('.t-detail .t-link', { hasText: 'Slack' }).waitFor();
+    assert.equal(await page.locator('.t-linkhere').count(), 0);
+    // switching panes follows the pane now in front
+    await page.locator('.chat-tabs .chat-tab', { hasText: 'Discord' }).click();
+    assert.equal((await state()).sel, 'Nadia Farouk');
+    await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+  });
+
   await step('settings renders', async () => {
     await page.click('.nav >> text=Settings');
     await page.waitForSelector('.settings');

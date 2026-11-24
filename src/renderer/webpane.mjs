@@ -20,7 +20,7 @@ export function WebPane() {
 }
 
 /** A web page with navigation controls. `n` changes whenever the caller wants `url` loaded afresh; `off` hides it without unloading. */
-export function Browser({ url, n, partition, onClose, off = false, label = 'Web page' }) {
+export function Browser({ url, n, partition, onClose, onLocation, off = false, label = 'Web page' }) {
   const web = { url, n };
   const view = useRef();
   const [st, setSt] = useState({ url: web.url, title: '', loading: true, back: false, forward: false, error: null });
@@ -50,6 +50,9 @@ export function Browser({ url, n, partition, onClose, off = false, label = 'Web 
     setSt((s) => ({ ...s, url: web.url, title: '', loading: true, error: null }));
     view.current.src = web.url;
   }, [web.n]);
+
+  // Tell the owner where the page is now (it moves as links are followed inside it).
+  useEffect(() => { onLocation?.({ url: st.url, title: st.title }); }, [st.url, st.title]);
 
   const act = (fn) => () => { try { fn(view.current); } catch { /* not ready */ } };
   let host = '';

@@ -5,7 +5,7 @@ import { html, useState, useEffect, cx } from './util.mjs';
 import { S, api, set, toast, openMessage, closeReader } from './store.mjs';
 import { newDraft } from './compose.mjs';
 import { Browser } from './webpane.mjs';
-import { PLATFORMS, linkFromInput } from '../core/notion.mjs';
+import { PLATFORMS, linkFromInput, conversationOf, nameFromTitle } from '../core/notion.mjs';
 
 const CHAT_PARTITION = 'persist:stillmail-chat'; // sign-ins for the messaging sites; separate from links opened from email
 const NOTION_COLORS = { default: '#878a8f', gray: '#9a9da3', brown: '#b98f6f', orange: '#e79a4f', yellow: '#e3c24f', green: '#6fc79a', blue: '#6aa8ee', purple: '#a98be6', pink: '#e68bc0', red: '#ec7a72' };
@@ -62,9 +62,9 @@ function save(id, patch) {
   );
 }
 
-async function addPerson(name) {
+async function addPerson(name, links = []) {
   try {
-    const row = await api.notionCreate({ name });
+    const row = await api.notionCreate(links.length ? { name, links } : { name });
     putRow(row);
     T({ sel: row.id, q: '', tags: new Set() });
   } catch (e) { toast(`Could not add to Notion: ${clean(e)}`, { ms: 9000 }); }
@@ -102,13 +102,51 @@ export function openConversation(link, event) {
   const { chats, active } = S.testers;
   const cur = chats[link.platform];
   const reuse = cur && cur.url === link.url && active !== link.platform; // already there: just bring it forward
-  return T({ chats: { ...chats, [link.platform]: reuse ? cur : { url: link.url, n: (cur?.n || 0) + 1 } }, active: link.platform });
+  T({ chats: { ...chats, [link.platform]: reuse ? cur : { url: link.url, n: (cur?.n || 0) + 1, at: link.url, title: '' } }, active: link.platform });
+  return follow();
 }
+
+const INBOX = { instagram: 'https://www.instagram.com/direct/inbox/', discord: 'https://discord.com/channels/@me', slack: 'https://app.slack.com/client', teams: 'https://teams.microsoft.com/v2/' };
+
+/** Open a platform's inbox (or return to its pane, wherever it was left). */
+function openInbox(platform, event) {
+  if (S.testers.chats[platform] && !event?.metaKey && !event?.ctrlKey) { if (S.open) closeReader(); return showChat(platform); }
+  return openConversation({ platform, url: INBOX[platform] }, event);
+}
+
+function showChat(platform) { T({ active: platform }); follow(); }
 
 function closeChat(platform) {
   const { [platform]: _, ...chats } = S.testers.chats;
   T({ chats, active: Object.keys(chats)[0] || null, wide: Object.keys(chats).length ? S.testers.wide : false });
+  follow();
 }
+
+// ------------------------------------------------------------------ following the browser
+
+/** The person a conversation is linked to, if any. */
+const ownerOf = (key) => S.testers.rows.find((r) => r.links.some((l) => l.url && conversationOf(l.url)?.key === key));
+
+/** Make the details follow the pane in front: its conversation's person, or the offer to link it to someone. */
+function follow() {
+  const t = S.testers;
+  const chat = t.chats[t.active];
+  const conv = chat?.at ? conversationOf(chat.at) : null;
+  if (!conv) { if (t.here) T({ here: null }); return; }
+  const here = { ...conv, title: chat.title || '' };
+  if (t.here?.key !== conv.key) T({ here, dismissed: null, sel: ownerOf(conv.key)?.id ?? t.sel });
+  else if (t.here.title !== here.title || t.here.url !== here.url) T({ here });
+}
+
+/** A browser pane reports each page it lands on. */
+export function onLocation(platform, { url, title }) {
+  const chat = S.testers.chats[platform];
+  if (!chat || (chat.at === url && chat.title === title)) return;
+  T({ chats: { ...S.testers.chats, [platform]: { ...chat, at: url, title } } });
+  if (platform === S.testers.active) follow();
+}
+
+const pick = (id) => T({ sel: id, dismissed: S.testers.here?.key ?? null });
 
 // ------------------------------------------------------------------ small pieces
 
@@ -194,6 +232,10 @@ function People() {
         <button class="btn small" disabled=${loading} onClick=${() => loadTesters()} title="Fetch the latest from Notion">${loading ? 'Loading…' : 'Refresh'}</button>
         ${!S.demo && html`<button class="btn small" onClick=${() => T({ connecting: true })}>Connection…</button>`}
       </div>
+      <div class="t-inboxes" role="group" aria-label="Open an inbox">
+        <span>Open inbox</span>
+        ${Object.keys(INBOX).map((p) => html`<button class=${cx('chat-tab', S.testers.active === p && 'on')} key=${p} title=${`Open ${PLATFORMS[p].name} beside the list. Opening a conversation there shows its person here.`} onClick=${(e) => openInbox(p, e)}><${Badge} platform=${p} />${PLATFORMS[p].name}</button>`)}
+      </div>
       ${error && html`<div class="banner t-error"><span>${error}</span><button onClick=${() => loadTesters()}>Try again</button></div>`}
       <div class="t-tools">
         <input class="input" value=${q} onInput=${(e) => T({ q: e.target.value })} placeholder="Find a person, tag or note…" aria-label="Find a person" />
@@ -207,13 +249,13 @@ function People() {
         </div>`}
       <div class="card t-list">
         ${shown.map((r) => html`
-          <div class=${cx('row', sel === r.id && 'sel')} key=${r.id} tabindex="0" onClick=${() => T({ sel: r.id })} onKeyDown=${(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) T({ sel: r.id }); }}>
+          <div class=${cx('row', sel === r.id && 'sel')} key=${r.id} tabindex="0" onClick=${() => pick(r.id)} onKeyDown=${(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) pick(r.id); }}>
             <span class="who">${r.name || 'Unnamed'}</span>
             <span class="t-rowtags">${tagField && (r.values[tagField.name] || []).map((t) => html`<${Tag} key=${t} name=${t} color=${colorOf(tagField, t)} />`)}</span>
             <span class="t-links" onClick=${(e) => e.stopPropagation()}>
               ${r.links.filter((l) => l.platform !== 'note').map((l, i) => html`
                 <button class="plat-btn" key=${i} title=${`${PLATFORMS[l.platform].name}: ${linkText(l)}`} aria-label=${`Open ${PLATFORMS[l.platform].name} conversation with ${r.name}: ${linkText(l)}`}
-                  onClick=${(e) => { T({ sel: r.id }); openConversation(l, e); }}><${Badge} platform=${l.platform} /></button>`)}
+                  onClick=${(e) => { pick(r.id); openConversation(l, e); }}><${Badge} platform=${l.platform} /></button>`)}
             </span>
           </div>`)}
         ${shown.length === 0 && html`<div class="empty">${loading && !rows.length ? 'Loading from Notion…' : rows.length ? 'Nobody matches.' : 'Nobody here yet. Add the first person above, or add rows in Notion and press Refresh.'}</div>`}
@@ -258,6 +300,9 @@ function Links({ row }) {
             <button class="btn ghost small" aria-label="Remove link" title="Remove" onClick=${() => setLinks(row.links.filter((_, j) => j !== i))}>✕</button>
           </div>`))}
       ${row.links.length === 0 && html`<div class="empty">No conversations linked yet.</div>`}
+      ${S.testers.here && !ownerOf(S.testers.here.key) && html`
+        <button class="btn small t-linkhere" onClick=${() => setLinks([...row.links, { platform: S.testers.here.platform, url: S.testers.here.url, label: '' }])}>
+          <${Badge} platform=${S.testers.here.platform} /> Link the open ${PLATFORMS[S.testers.here.platform].name} conversation</button>`}
       <${LinkEditor} key=${`new-${row.id}`} onSave=${(l) => setLinks([...row.links, l])} />
       <details class="t-help"><summary>Where do I find a conversation's link?</summary>
         <p><b>Slack</b>: right-click the conversation → Copy → Copy link. <b>Teams</b>: ••• next to the chat → Copy link. <b>Discord</b> and <b>Instagram</b>: open the conversation at discord.com or instagram.com/direct in a browser and copy the address. The first time you open each one here you sign in once; it stays signed in.</p>
@@ -324,6 +369,49 @@ function Detail({ row }) {
     </div>`;
 }
 
+/** The pane is on a conversation nobody is linked to: add its person, or attach it to someone already listed. */
+function Unlinked({ here }) {
+  const [typed, setTyped] = useState(null); // null: keep following the guess from the page title
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  const name = typed ?? nameFromTitle(here.title);
+  const platform = PLATFORMS[here.platform].name;
+  const link = { platform: here.platform, url: here.url, label: '' };
+  const needle = q.trim().toLowerCase();
+  const found = needle ? S.testers.rows.filter((r) => r.name.toLowerCase().includes(needle)).sort(byName).slice(0, 8) : [];
+  const create = async () => { if (!name.trim() || busy) return; setBusy(true); await addPerson(name.trim(), [link]); setBusy(false); };
+  const attach = (row) => { save(row.id, { links: [...row.links, link] }); T({ sel: row.id }); };
+  return html`
+    <div class="t-detail t-unlinked">
+      <div class="t-detail-h">
+        <${Badge} platform=${here.platform} /><b class="ttl">New ${platform} conversation</b>
+        <button class="btn ghost small" onClick=${() => T({ dismissed: here.key })} aria-label="Not now" title="Not now">✕</button>
+      </div>
+      <div class="t-detail-body">
+        <p class="note">This conversation is not linked to anyone on your list yet.</p>
+        <div class="t-section">
+          <div class="side-h"><span>Add as a new tester</span></div>
+          <div class="t-linkform">
+            <input class="input" value=${name} onInput=${(e) => setTyped(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter') create(); }} placeholder="Their name" aria-label="New tester's name" />
+            <button class="btn primary small" disabled=${!name.trim() || busy} onClick=${create}>${busy ? 'Adding…' : 'Add tester'}</button>
+          </div>
+        </div>
+        <div class="t-section">
+          <div class="side-h"><span>Or link to someone already listed</span></div>
+          <input class="input" value=${q} onInput=${(e) => setQ(e.target.value)} placeholder="Search by name…" aria-label="Search existing testers" />
+          <div class="t-found">
+            ${found.map((r) => html`
+              <button key=${r.id} onClick=${() => attach(r)} title=${`Link this conversation to ${r.name}`}>
+                <span class="who">${r.name || 'Unnamed'}</span>
+                ${r.links.filter((l) => l.platform !== 'note').map((l, i) => html`<${Badge} key=${i} platform=${l.platform} />`)}
+              </button>`)}
+            ${needle && found.length === 0 && html`<div class="empty">Nobody on the list matches.</div>`}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ------------------------------------------------------------------ conversations
 
 function Chats({ off }) {
@@ -333,10 +421,10 @@ function Chats({ off }) {
     <div class=${cx('chat-stack', off && 'off')}>
       <div class="chat-tabs">
         <button class="btn ghost small" onClick=${() => T({ wide: !wide })} title=${wide ? 'Show the list of people' : 'Give the conversation the whole window'}>${wide ? '⇥ People' : '⇤ Wider'}</button>
-        ${open.map((p) => html`<button key=${p} class=${cx('chat-tab', p === active && 'on')} aria-pressed=${p === active} onClick=${() => T({ active: p })}><${Badge} platform=${p} />${PLATFORMS[p].name}</button>`)}
+        ${open.map((p) => html`<button key=${p} class=${cx('chat-tab', p === active && 'on')} aria-pressed=${p === active} onClick=${() => showChat(p)}><${Badge} platform=${p} />${PLATFORMS[p].name}</button>`)}
       </div>
       <div class="chat-panes">
-        ${open.map((p) => html`<${Browser} key=${p} url=${chats[p].url} n=${chats[p].n} partition=${CHAT_PARTITION} off=${p !== active} label=${`${PLATFORMS[p].name} conversation`} onClose=${() => closeChat(p)} />`)}
+        ${open.map((p) => html`<${Browser} key=${p} url=${chats[p].url} n=${chats[p].n} partition=${CHAT_PARTITION} off=${p !== active} onLocation=${(loc) => onLocation(p, loc)} label=${`${PLATFORMS[p].name} conversation`} onClose=${() => closeChat(p)} />`)}
       </div>
     </div>`;
 }
@@ -355,10 +443,11 @@ export function Testers({ shown }) {
   }, []);
   const chatting = !!t.active;
   const row = t.rows.find((r) => r.id === t.sel);
+  const unlinked = chatting && t.here && t.dismissed !== t.here.key && !ownerOf(t.here.key) ? t.here : null;
   const ready = t.status?.connected && t.schema && !t.connecting;
   return html`
     <main class=${cx('testers', !shown && 'off', chatting && 'chatting', chatting && t.wide && !S.open && 'wide')}>
-      ${ready ? html`<${People} />${row && html`<${Detail} row=${row} />`}`
+      ${ready ? html`<${People} />${unlinked ? html`<${Unlinked} key=${unlinked.key} here=${unlinked} />` : row && html`<${Detail} row=${row} />`}`
         : !t.status ? html`<div class="empty">${t.error || 'Loading…'}</div>`
         : t.status.connected && !t.connecting ? html`<div class="empty">${t.error ? html`${t.error} <button class="btn small" onClick=${() => loadTesters()}>Try again</button> <button class="btn small" onClick=${() => T({ connecting: true })}>Connection…</button>` : 'Loading from Notion…'}</div>`
         : html`<div class="main" style=${{ flex: 1 }}><${Connection} /></div>`}

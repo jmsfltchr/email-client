@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDatabaseId, platformOf, linkFromInput, parseLinks, linksToRichText, describeSchema, missingProperties, pageToRow, rowToProperties, NOTION_VERSION } from '../src/core/notion.mjs';
+import { conversationOf, nameFromTitle, parseDatabaseId, platformOf, linkFromInput, parseLinks, linksToRichText, describeSchema, missingProperties, pageToRow, rowToProperties, NOTION_VERSION } from '../src/core/notion.mjs';
 import { Notion } from '../src/main/notion.mjs';
 import { createDemoNotion } from '../src/renderer/testers-demo.mjs';
 
@@ -156,4 +156,38 @@ test('demo database behaves like the real one', async () => {
   await api.notionTrash(made.id, false);
   assert.equal((await api.notionLoad()).rows.length, rows.length + 1);
   assert.ok(schema.fields.some((f) => f.type === 'multi_select'));
+});
+
+test('a web address is recognised as a conversation, and the same conversation always gets the same key', () => {
+  const key = (u) => conversationOf(u)?.key ?? null;
+  assert.equal(key('https://app.slack.com/client/T0ACME/D0PRIYA1'), 'slack:D0PRIYA1');
+  assert.equal(key('https://app.slack.com/client/T0ACME/D0PRIYA1/thread/D0PRIYA1-1700000000.000100'), 'slack:D0PRIYA1');
+  assert.equal(key('https://acme.slack.com/archives/D0PRIYA1/p1700000000000100'), 'slack:D0PRIYA1');
+  assert.equal(key('https://app.slack.com/client/T0ACME/unreads'), null);
+  assert.equal(key('https://app.slack.com/client'), null);
+  assert.equal(key('https://discord.com/channels/@me/200000000000000001'), 'discord:200000000000000001');
+  assert.equal(key('https://discord.com/channels/3000/4000/5000'), 'discord:4000');
+  assert.equal(key('https://discord.com/channels/@me'), null);
+  assert.equal(key('https://www.instagram.com/direct/t/1000001/'), 'instagram:1000001');
+  assert.equal(key('https://www.instagram.com/direct/inbox/'), null);
+  assert.equal(key('https://teams.microsoft.com/l/chat/19%3Aabc-def_123%40thread.v2/conversations?tenantId=x'), 'teams:19:abc-def_123@thread.v2');
+  assert.equal(key('https://teams.microsoft.com/l/chat/0/0?users=B@x.example,a@x.example'), key('https://teams.microsoft.com/l/chat/0/0?users=a@x.example,b@x.example'));
+  assert.equal(key('https://teams.microsoft.com/v2/'), null);
+  assert.equal(key('https://example.com/direct/t/1'), null);
+  assert.equal(key('not a url'), null);
+  // what gets stored is the conversation, not the message or thread that happened to be open
+  assert.equal(conversationOf('https://discord.com/channels/3000/4000/5000').url, 'https://discord.com/channels/3000/4000');
+  assert.equal(conversationOf('https://app.slack.com/client/T0ACME/D0PRIYA1/thread/x').url, 'https://app.slack.com/client/T0ACME/D0PRIYA1');
+  assert.equal(conversationOf('https://app.slack.com/client/T0ACME/D0PRIYA1').platform, 'slack');
+});
+
+test('a name is guessed from the page title', () => {
+  assert.equal(nameFromTitle('alice (DM) - Acme - Slack'), 'alice');
+  assert.equal(nameFromTitle('Slack | Sam Okafor | Acme'), 'Sam Okafor');
+  assert.equal(nameFromTitle('(3) Discord | @marcus'), 'marcus');
+  assert.equal(nameFromTitle('• Discord | @marcus'), 'marcus');
+  assert.equal(nameFromTitle('Chat | Dana Whitfield | Microsoft Teams'), 'Dana Whitfield');
+  assert.equal(nameFromTitle('(1) Inbox • Chats'), '');
+  assert.equal(nameFromTitle('Instagram'), '');
+  assert.equal(nameFromTitle(''), '');
 });
