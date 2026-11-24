@@ -56,25 +56,40 @@ test('senders: replied-to are important, repeat no-reply senders are channels', 
   assert.equal(kind('bot@svc.com'), 'channel');
   assert.equal(kind('stranger@b.com'), 'new');
   assert.equal(kind('promo@shop.com'), 'channel');
-  assert.deepEqual(model.needsReply.map((m) => m.from.addr), ['ann@a.com']);
+  assert.deepEqual(model.people.map((m) => [m.peer.addr, m.awaiting]), [['ann@a.com', true], ['ann@a.com', false]], 'her message, and my earlier one to her');
   assert.deepEqual(model.attention.map((m) => m.from.addr), ['stranger@b.com']);
   // override
   const st = defaultState(); st.senderKind['ann@a.com'] = 'channel';
-  assert.equal(buildModel(msgs, st, opts).needsReply.length, 0);
+  assert.deepEqual(buildModel(msgs, st, opts).people.map((m) => m.awaiting), [], 'a machine: neither her mail nor mine to her is a conversation with a person');
 });
 
-test('needs reply clears when I answer, and re-opens on a new message', () => {
+test('people: every conversation with a person, whoever wrote last', () => {
   const t = 'thread1';
-  const base = [
-    mk({ from: 'me@x.com', sent: true, to: ['ann@a.com'], subject: 'x', ts: NOW - 50 * DAY }),
-    mk({ from: 'ann@a.com', subject: 'q', threadId: t, ts: NOW - 3 * DAY }),
-  ];
-  assert.equal(buildModel(base, defaultState(), opts).needsReply.length, 1);
-  const replied = [...base, mk({ from: 'me@x.com', sent: true, to: ['ann@a.com'], subject: 'Re: q', threadId: t, ts: NOW - 2 * DAY })];
-  assert.equal(buildModel(replied, defaultState(), opts).needsReply.length, 0);
-  const again = [...replied, mk({ from: 'ann@a.com', subject: 'Re: q', threadId: t, ts: NOW - DAY })];
-  const st = defaultState(); st.done[base[1].key] = true;
-  assert.equal(buildModel(again, st, opts).needsReply.length, 1);
+  const first = mk({ from: 'me@x.com', sent: true, to: ['ann@a.com'], subject: 'x', ts: NOW - 50 * DAY });
+  const q = mk({ from: { name: 'Ann', addr: 'ann@a.com' }, subject: 'q', threadId: t, ts: NOW - 3 * DAY });
+  const rows = (msgs, st = defaultState()) => buildModel(msgs, st, opts).people.map((m) => [m.subject, m.peer.name || m.peer.addr, m.awaiting]);
+  assert.deepEqual(rows([first, q]), [['q', 'Ann', true], ['x', 'Ann', false]]);
+  // I answer: the conversation stays, now showing my reply and no longer awaiting me
+  const reply = mk({ from: 'me@x.com', sent: true, to: ['ann@a.com'], subject: 'Re: q', threadId: t, ts: NOW - 2 * DAY });
+  assert.deepEqual(rows([first, q, reply])[0], ['Re: q', 'Ann', false]);
+  // dismissing hides it until the conversation moves on
+  const st = defaultState(); st.done[reply.key] = true;
+  assert.equal(rows([first, q, reply], st).length, 1);
+  const again = mk({ from: { name: 'Ann', addr: 'ann@a.com' }, subject: 'Re: q', threadId: t, ts: NOW - DAY });
+  assert.deepEqual(rows([first, q, reply, again], st)[0], ['Re: q', 'Ann', true]);
+
+  // a note to myself, and mail to someone who has never written to me, are conversations with people
+  const note = mk({ from: 'me@x.com', sent: true, to: ['me@x.com'], subject: 'test', ts: NOW - 3600000 });
+  const cold = mk({ from: 'me@x.com', sent: true, to: ['new@person.com'], subject: 'intro', ts: NOW - 7200000 });
+  assert.deepEqual(rows([note, cold]), [['test', 'Note to self', false], ['intro', 'new@person.com', false]]);
+  // mail I send to a machine, and automatic replies, are not
+  const bot = Array.from({ length: 4 }, (_, i) => mk({ from: 'noreply@svc.com', subject: 'Report', ts: NOW - (i + 5) * DAY }));
+  const toBot = mk({ from: 'me@x.com', sent: true, to: ['noreply@svc.com'], subject: 'unsubscribe', ts: NOW - DAY });
+  const auto = mk({ from: 'me@x.com', sent: true, auto: true, to: ['someone@y.com'], subject: 'Out of office', ts: NOW - DAY });
+  assert.deepEqual(rows([...bot, toBot, auto]), []);
+  // a machine's message at the end of a thread does not hide the person's
+  const tail = mk({ from: 'noreply@svc.com', subject: 'Re: q', threadId: t, ts: NOW - 1000 });
+  assert.deepEqual(rows([first, q, ...bot, tail])[0], ['q', 'Ann', true]);
 });
 
 test('rare / new topics and keywords are escalated; routine ones are not', () => {
@@ -119,7 +134,8 @@ test('topic clustering on the demo mailbox', () => {
   for (const want of ['Github › notifications › [fernhill/api] ⋯', 'Harbourbank › alerts › You spent ⋯ at ⋯', 'Stripe › billing › Payout of ⋯ is on its way', 'Circleci › builds › Success: ⋯ (main)', 'Google › calendar-notification › Accepted: ⋯', 'Themargin › newsletter › all mail']) {
     assert.ok(labels.includes(want), `${want}\n${labels.join('\n')}`);
   }
-  assert.deepEqual(model.needsReply.map((m) => m.from.name), ['Priya Raman', 'Helen Rowan', 'Marcus Oyelaran', 'Dana Whitfield', 'Tom Becker']);
+  assert.deepEqual(model.people.filter((m) => m.awaiting).map((m) => m.peer.name), ['Priya Raman', 'Helen Rowan', 'Marcus Oyelaran', 'Dana Whitfield', 'Tom Becker']);
+  assert.deepEqual(model.people.filter((m) => !m.awaiting).map((m) => m.peer.name), ['Tom Becker', 'Jo Adeyemi', 'Sofia Lindqvist', 'Helen Rowan'], 'conversations where I wrote last are listed too');
   assert.equal(model.attention.length, 8);
   // user regex rule regroups
   const st = defaultState();
@@ -235,14 +251,14 @@ test('bump: the bump date replaces the received date for ordering and fading', (
   const msgs = [sent, ann, bob, cy, ...alerts, oldAlarm, newAlarm];
 
   let model = buildModel(msgs, defaultState(), opts);
-  assert.deepEqual(model.needsReply.map((m) => m.subject), ['newest', 'recent', 'old question']);
+  assert.deepEqual(model.people.map((m) => m.subject), ['newest', 'recent', 'old question', 'x']);
   assert.deepEqual(model.attention.map((m) => m.subject), ['Disk quota overdue'], 'the 40-day-old alarm has slipped off');
 
   const st = defaultState();
   st.bumped[ann.key] = NOW - 3600000;
   st.bumped[oldAlarm.key] = NOW - 7200000;
   model = buildModel(msgs, st, opts);
-  assert.deepEqual(model.needsReply.map((m) => m.subject), ['old question', 'newest', 'recent']);
+  assert.deepEqual(model.people.map((m) => m.subject), ['old question', 'newest', 'recent', 'x']);
   assert.equal(ann.eff, NOW - 3600000);
   assert.equal(ann.ts, NOW - 45 * DAY, 'the real date is untouched');
   assert.deepEqual(model.attention.map((m) => m.subject), ['Certificate expired', 'Disk quota overdue'], 'bumping keeps it on the list');

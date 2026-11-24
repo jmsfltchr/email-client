@@ -19,19 +19,22 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
   await page.screenshot({ path: `${SP}/home.png` });
   const topicLabels = () => page.$$eval('.topic > .row .path', (els) => els.map((e) => e.textContent));
 
-  await step('no unread counts / needs reply list', async () => {
-    const names = await page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
-    assert.deepStrictEqual(names, ['Priya Raman', 'Helen Rowan', 'Marcus Oyelaran', 'Dana Whitfield']);
+  await step('People lists every conversation with a person, awaiting or not', async () => {
+    const names = await page.$$eval('section[aria-label="People"] .who', (e) => e.map((x) => x.textContent));
+    assert.deepStrictEqual(names, ['Priya Raman', 'Helen Rowan', 'Marcus Oyelaran', 'Tom Becker', 'Dana Whitfield', 'Jo Adeyemi', 'Sofia Lindqvist']);
+    const mine = await page.$$eval('section[aria-label="People"] .who.mine', (e) => e.map((x) => x.textContent));
+    assert.deepStrictEqual(mine, ['Tom Becker', 'Jo Adeyemi', 'Sofia Lindqvist'], 'where I wrote last');
+    assert.match(await page.locator('section[aria-label="People"] .row', { hasText: 'Tom Becker' }).locator('.snip').textContent(), /^— You: /);
   });
 
   await step('unread dots: shown for unread mail, cleared by opening', async () => {
     const dots = (section) => page.locator(`section[aria-label="${section}"] .row:has(.unread) .who, section[aria-label="${section}"] .row:has(.unread) .subj`).allTextContents();
-    assert.deepStrictEqual(await page.locator('section[aria-label="Needs reply"] .row:has(.unread) .who').allTextContents(), ['Priya Raman', 'Helen Rowan']);
+    assert.deepStrictEqual(await page.locator('section[aria-label="People"] .row:has(.unread) .who').allTextContents(), ['Priya Raman', 'Helen Rowan']);
     assert.equal(await page.locator('section[aria-label="Attention"] .row:has(.unread)').count(), 4);
     await page.screenshot({ path: `${SP}/unread.png` });
-    await page.click('section[aria-label="Needs reply"] >> text=Helen Rowan');
+    await page.click('section[aria-label="People"] >> text=Helen Rowan');
     await page.waitForSelector('.reader iframe');
-    assert.deepStrictEqual(await page.locator('section[aria-label="Needs reply"] .row:has(.unread) .who').allTextContents(), ['Priya Raman']);
+    assert.deepStrictEqual(await page.locator('section[aria-label="People"] .row:has(.unread) .who').allTextContents(), ['Priya Raman']);
     await page.keyboard.press('Escape');
   });
 
@@ -46,17 +49,17 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
   });
 
   await step('bump moves an item to the top and stops it fading; undo restores', async () => {
-    const who = () => page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
-    const row = page.locator('section[aria-label="Needs reply"] .row', { hasText: 'Dana Whitfield' });
+    const who = () => page.$$eval('section[aria-label="People"] .who', (e) => e.map((x) => x.textContent));
+    const row = page.locator('section[aria-label="People"] .row', { hasText: 'Dana Whitfield' });
     assert.ok(await row.evaluate((el) => el.classList.contains('fading')));
     await row.hover(); await row.locator('text=Bump').click();
     assert.equal((await who())[0], 'Dana Whitfield');
-    const top = page.locator('section[aria-label="Needs reply"] .row').first();
+    const top = page.locator('section[aria-label="People"] .row').first();
     assert.ok(await top.evaluate((el) => el.classList.contains('fresh')));
     assert.match(await top.locator('.age').textContent(), /waiting 9d/);
     await page.screenshot({ path: `${SP}/bump.png` });
     await page.click('.toast >> text=Undo');
-    assert.equal((await who())[3], 'Dana Whitfield');
+    assert.equal((await who())[4], 'Dana Whitfield');
     const a = page.locator('section[aria-label="Attention"] .row').last();
     const subject = await a.locator('.subj').textContent();
     await a.hover(); await a.locator('text=Bump').click();
@@ -144,7 +147,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.click('[aria-label="Reading theme"] >> text=Dark');
     await page.waitForSelector('.paper.dark');
     // HTML mail: inverted page, folded quote
-    await page.click('section[aria-label="Needs reply"] >> text=Priya Raman');
+    await page.click('section[aria-label="People"] >> text=Priya Raman');
     const html = page.frameLocator('.reader iframe');
     await html.locator('text=staffing trade-off').waitFor();
     assert.equal(await html.locator('text=Draft roadmap attached').isVisible(), false);
@@ -152,7 +155,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.screenshot({ path: `${SP}/dark-html.png` });
     await html.locator('.sm-quote-toggle').click();
     await html.locator('text=Draft roadmap attached').waitFor({ state: 'visible' });
-    await page.click('section[aria-label="Needs reply"] >> text=Marcus Oyelaran');
+    await page.click('section[aria-label="People"] >> text=Marcus Oyelaran');
     await page.waitForSelector('.reader iframe');
   });
 
@@ -178,8 +181,9 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.click('.compose >> text=Send');
     await page.waitForSelector('.toast >> text=Sending');
     await page.waitForSelector('.toast >> text=Sent', { timeout: 9000 });
-    const names = await page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
-    assert.ok(!names.includes('Marcus Oyelaran'), 'replied thread leaves Needs reply');
+    const names = await page.$$eval('section[aria-label="People"] .who', (e) => e.map((x) => x.textContent));
+    assert.equal(names[0], 'Marcus Oyelaran', 'the conversation moves to the top with my reply');
+    assert.equal(await page.locator('section[aria-label="People"] .row').first().locator('.who.mine').count(), 1, 'and is no longer awaiting me');
     assert.equal(await page.locator('.reader .msg').count(), 4);
   });
 
@@ -194,9 +198,9 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.click('.compose-h button');
   });
 
-  await step('no reply needed removes person row', async () => {
-    await page.click('.reader-actions >> text=No reply needed');
-    const names = await page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
+  await step('dismiss removes a conversation from People', async () => {
+    await page.click('.reader-actions >> text=Dismiss');
+    const names = await page.$$eval('section[aria-label="People"] .who', (e) => e.map((x) => x.textContent));
     assert.ok(!names.includes('Dana Whitfield'));
     await page.click('.reader-top >> [title^="Close"]');
   });
@@ -208,27 +212,28 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await row.hover(); await row.locator('text=Never flag topic').click();
     assert.equal(await page.locator('section[aria-label="Attention"] .row').count(), 6);
     const r2 = page.locator('section[aria-label="Attention"] .row', { hasText: 'Rachel Okafor' });
-    await r2.hover(); await r2.locator('text=Important').click();
-    const names = await page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
+    await r2.hover(); await r2.locator('text=Person').click();
+    const names = await page.$$eval('section[aria-label="People"] .who', (e) => e.map((x) => x.textContent));
     assert.ok(names.includes('Rachel Okafor'));
   });
 
-  await step('Needs reply and Attention have their own time tabs', async () => {
-    const who = () => page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
+  await step('People and Attention have their own time tabs', async () => {
+    const who = () => page.$$eval('section[aria-label="People"] .who', (e) => e.map((x) => x.textContent));
     const attn = () => page.locator('section[aria-label="Attention"] .row').count();
     const before = [await who(), await attn()];
-    await page.click('[aria-label="Needs reply period"] >> text=24h');
+    await page.click('[aria-label="People period"] >> text=24h');
     assert.ok((await who()).length < before[0].length && (await who()).length > 0);
     assert.equal(await attn(), before[1], 'tabs are independent');
-    await page.click('section[aria-label="Needs reply"] .more');
+    await page.click('section[aria-label="People"] .more');
     assert.ok((await who()).length >= before[0].length, 'older ones are one click away');
     await page.click('[aria-label="Attention period"] >> text=24h');
     const day = await attn();
     assert.ok(day > 0 && day < before[1], `${day} < ${before[1]}`);
     await page.screenshot({ path: `${SP}/tabs.png` });
-    await page.click('[aria-label="Needs reply period"] >> text=30d');
+    await page.click('[aria-label="People period"] >> text=30d');
     await page.click('[aria-label="Attention period"] >> text=30d');
-    assert.deepStrictEqual([(await who()).length, await attn()], [before[0].length + 1, before[1]]);
+    await page.click('section[aria-label="People"] .more');
+    assert.deepStrictEqual([(await who()).length, await attn()], [before[0].length, before[1]]);
   });
 
   await step('period selector changes topic list', async () => {
@@ -279,8 +284,8 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
 
   await step('account tag filter', async () => {
     await page.click('.chips >> text=Personal');
-    const dots = await page.$$eval('section[aria-label="Needs reply"] .who', (e) => e.map((x) => x.textContent));
-    assert.deepStrictEqual(dots, ['Helen Rowan']);
+    const dots = await page.$$eval('section[aria-label="People"] .who', (e) => e.map((x) => x.textContent));
+    assert.deepStrictEqual(dots, ['Helen Rowan', 'Jo Adeyemi']);
     const labels = await topicLabels();
     assert.ok(labels.length > 0 && labels.every((l) => !/Github|Circleci|Stripe/.test(l)));
     await page.click('.chips >> text=Personal');
@@ -419,7 +424,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     // from the home view a thread opens on its latest unread message
     const landed = await page.evaluate(async () => {
       const { S, openMessage } = await import('./store.mjs');
-      const priya = S.model.needsReply.find((m) => m.from.name === 'Priya Raman');
+      const priya = S.model.people.find((m) => m.from.name === 'Priya Raman');
       delete S.user.read[priya.key];
       const first = S.model.threads.get(`${priya.acct}:${priya.threadId}`)[0];
       openMessage(first);
@@ -522,7 +527,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await page.click('.nav >> text=Focus');
-    await page.click('section[aria-label="Needs reply"] >> text=Helen Rowan');
+    await page.click('section[aria-label="People"] >> text=Helen Rowan');
     await page.waitForSelector('.reader iframe');
     assert.equal(await page.locator('.reader .unsub').count(), 0);
     await page.keyboard.press('Escape');

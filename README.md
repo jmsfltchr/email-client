@@ -31,9 +31,9 @@ Stillmail requests read-only access to mail and contacts, plus permission to sen
 
 ## How it works
 
-**Needs reply.** Any address you have ever written to is an important sender. Automatic replies (such as a vacation responder) do not count, and a mass sender (list headers or a no-reply style address) only counts once you have written to it at least twice and at least once for every ten emails it has sent. A conversation appears here when the latest message is from one of them and you have not answered since. Replying removes it; so does *No reply needed*.
+**People.** Every conversation with a person, newest first, whoever wrote last: mail from people, your replies, and mail you start (including notes to yourself). A conversation where they wrote last shows how long it has been waiting once it is more than a few days old; one where you wrote last is shown lighter with "You:". *Dismiss* removes a conversation until something new arrives in it. A sender is a **Person** if you have ever written to them. Automatic replies (such as a vacation responder) do not count, and a mass sender (list headers or a no-reply style address) only counts once you have written to it at least twice and at least once for every ten emails it has sent.
 
-**Notification channels.** An address that has sent you several emails (3 by default) and never had a reply is a notification channel. So is anything with bulk-mail headers or a no-reply style address. You can override any address in the reader or in Settings.
+**Machines.** An address that has sent you several emails (3 by default) and never had a reply is a **Machine**: a notification channel. So is anything with bulk-mail headers or a no-reply style address. You can override any address in the reader or in Settings.
 
 **Topics.** Within a channel, subjects are reduced to a pattern (ids, dates and amounts are collapsed) and grouped, so `Your order #123 has shipped` and `Your order #456 has shipped` are one topic. Shared `[tags]`, single varying words, and common prefixes are also grouped. A sender whose subject changes with every issue, such as a newsletter, is treated as a single topic named after the address alone; this is detected automatically, and *One topic for this sender* forces it for any address. When that is not enough, *Define topic by pattern…* lets you group with a regular expression. Topics are shown as `Org › channel › topic` with the time of the latest email, over the period chosen at the top of the panel. Topics are listed by their most recent email, newest first.
 
@@ -48,11 +48,11 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Faces and colours.** People are circles and organisations are rounded squares. A person shows their contact photo when your Google contacts have one, otherwise their initials. A notification channel shows its organisation's site icon at full size with no backing tile, otherwise its initial on a coloured square. The organisation's name is underlined in its brand colour, picked automatically as the dominant colour of the icon that is not near white, near black or grey; a monochrome logo gets a white underline (and a dark logo on a transparent background is inverted so it shows on the dark theme). An organisation with no icon gets a colour assigned from a fixed palette, which never changes. People at a company share its colour, while people on public mailboxes (gmail.com and similar) each get their own. Icons are fetched from Google's favicon service and cached; photos and icons can be turned off in Settings.
 
-**Unread dot.** Rows in Needs reply and Attention show a blue dot while Gmail still has the message unread and you have not opened it here. Reading it on your phone or in Gmail clears the dot within a minute; opening it in Stillmail clears it here only, because Stillmail never changes anything in Gmail. There is still no unread count.
+**Unread dot.** Rows in People and Attention show a blue dot while Gmail still has the message unread and you have not opened it here. Reading it on your phone or in Gmail clears the dot within a minute; opening it in Stillmail clears it here only, because Stillmail never changes anything in Gmail. There is still no unread count.
 
-**Bump.** Any row in Needs reply, Attention or Notifications can be bumped (row button, reader button, or `b`). It jumps to the top, and its bump date replaces its received date for ordering and fading, so it stays on the list while untouched rows slip away. Bump again to keep it there; newer mail on a bumped topic simply takes over. The age shown is still the real one, with an ↑ marker.
+**Bump.** Any row in People, Attention or Notifications can be bumped (row button, reader button, or `b`). It jumps to the top, and its bump date replaces its received date for ordering and fading, so it stays on the list while untouched rows slip away. Bump again to keep it there; newer mail on a bumped topic simply takes over. The age shown is still the real one, with an ↑ marker.
 
-**Time tabs.** Needs reply, Attention and Notifications each have their own 24h / 3d / 7d / 30d / 90d tabs, remembered separately. Needs reply and Attention use the bump date where there is one, and anything you flagged yourself stays in Attention whatever the tab. Needs reply keeps a *Show older* link so nobody is lost.
+**Time tabs.** People, Attention and Notifications each have their own 24h / 3d / 7d / 30d / 90d tabs, remembered separately. People and Attention use the bump date where there is one, and anything you flagged yourself stays in Attention whatever the tab. People keeps a *Show older* link so nobody is lost.
 
 **Links.** Clicking a link in an email opens the page in a browser pane to the right of the message, with back, forward, reload and *Open in default browser*. ⌘-click (Ctrl-click on Windows and Linux) sends a link straight to your default browser instead. The pane is an isolated web page with its own cookies; it has no access to your mail and no camera, microphone, location or notification permissions. `mailto:` links start a new message.
 
@@ -70,7 +70,7 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Search.** Narrow by sender first: pick one or more domains, then exact addresses, then type text. Counts update as you go. Quick search covers subjects and previews of synced mail instantly; press Enter to run the same query against full message text on Gmail.
 
-**Desktop notifications** fire only for important senders and escalated mail.
+**Desktop notifications** fire only for mail from people and escalated mail.
 
 ## Keyboard
 
@@ -82,7 +82,7 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 | `,` | Settings |
 | `r` / `a` / `f` | Reply / reply all / forward the open conversation |
 | `b` | Bump the open conversation (or its topic) to the top of its list |
-| `e` | Dismiss or mark no reply needed, and close |
+| `e` | Dismiss the open conversation from its list, and close |
 | `⌘F` / `Ctrl+F` | Find in the open conversation (otherwise go to Search) |
 | `Esc` | Close reader or dialog |
 | `Ctrl/⌘ + Enter` | Send |

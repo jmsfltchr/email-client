@@ -120,7 +120,7 @@ function Sidebar() {
 
 // ------------------------------------------------------------------ home rows
 //
-// Needs reply, Attention and Notifications are the same thing three times: a time-tabbed list of
+// People, Attention and Notifications are the same thing three times: a time-tabbed list of
 // rows, newest first by "effective date" (received, or last bumped), each row offering its own
 // actions, then Bump, then a way to dismiss it. They share Section and Row; only what a row
 // says, and what dismissing means, differs.
@@ -138,8 +138,8 @@ function Path({ m }) {
   return html`<${OrgPath} root=${s.root} org=${s.org} channel=${s.channel} label=${t?.label} addr=${s.addr} />`;
 }
 
-const Subject = ({ m, base }) => html`
-  <span class="subj">${(base ? baseSubject(m.subject) : m.subject) || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span class="snip">— ${m.snippet}</span>`}</span>`;
+const Subject = ({ m, base, you }) => html`
+  <span class="subj">${(base ? baseSubject(m.subject) : m.subject) || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span class="snip">— ${you ? 'You: ' : ''}${m.snippet}</span>`}</span>`;
 
 /**
  * One list row, for a message or a topic.
@@ -175,11 +175,11 @@ const avatarOf = (m) => ({ addr: m.from.addr, name: m.from.name, acct: m.acct })
 
 function PersonRow({ m }) {
   return html`
-    <${Row} item=${m} eff=${m.eff} ts=${m.ts} avatar=${avatarOf(m)} onOpen=${() => openMessage(m)} selected=${S.open?.key === m.key} unread=${isUnread(m)} waiting
+    <${Row} item=${m} eff=${m.eff} ts=${m.ts} avatar=${{ addr: m.peer.addr, name: m.peer.name, acct: m.acct }} onOpen=${() => openMessage(m)} selected=${S.open?.key === m.key} unread=${isUnread(m)} waiting=${m.awaiting}
       actions=${html`<button class="btn small" onClick=${() => startReply(m, 'reply')}>Reply</button>`}
-      dismiss=${{ label: 'No reply needed', title: 'Remove from this list without replying', onClick: () => { markDone(m); undoable('No reply needed', () => undoDone(m)); } }}>
-      <span class="who">${displayName(m.from)}</span>
-      <${Subject} m=${m} base />
+      dismiss=${{ label: 'Dismiss', title: 'Remove from People until the conversation moves on', onClick: () => { markDone(m); undoable('Dismissed until there is something new', () => undoDone(m)); } }}>
+      <span class=${cx('who', !m.awaiting && 'mine')}>${displayName(m.peer)}</span>
+      <${Subject} m=${m} base you=${!m.awaiting} />
     <//>`;
 }
 
@@ -188,7 +188,7 @@ function AttentionRow({ m }) {
   return html`
     <${Row} item=${m} eff=${m.eff} ts=${m.ts} avatar=${avatarOf(m)} onOpen=${() => openMessage(m)} selected=${S.open?.key === m.key} unread=${isUnread(m)} fresh=${flagged}
       actions=${html`
-        ${m.kind === 'new' && html`<button class="btn small" title="Treat this sender as an important person" onClick=${() => setSenderKind(m.from.addr, 'important')}>Important</button>`}
+        ${m.kind === 'new' && html`<button class="btn small" title="This sender is a person: show their mail in People" onClick=${() => setSenderKind(m.from.addr, 'important')}>Person</button>`}
         ${m.topic && !flagged && html`<button class="btn small" title="Stop flagging this topic" onClick=${() => { toggleQuiet(m.topic); undoable('This topic will not be flagged again', () => toggleQuiet(m.topic)); }}>Never flag topic</button>`}`}
       dismiss=${{ label: flagged ? 'Unflag' : 'Dismiss', title: 'Remove from Attention', onClick: () => ack(m) }}>
       <div class="attn-main">
@@ -220,7 +220,7 @@ function TopicRow({ row: { topic: t, msgs, flagged, eff } }) {
               ${single ? 'Split this sender by subject' : 'One topic for this sender'}</button>
             ${!single && html`<button class="btn small" onClick=${() => set({ ruleEditor: { topic: t } })}>Define topic by pattern…</button>`}
             <button class="btn small" onClick=${() => toggleQuiet(t.key)}>${S.user.quietTopics[t.key] ? 'Flag this topic again' : 'Never flag this topic'}</button>
-            <button class="btn small" onClick=${() => setSenderKind(t.addr, 'important')} title=${`Treat ${t.addr} as a person you need to answer`}>Sender is important</button>
+            <button class="btn small" onClick=${() => setSenderKind(t.addr, 'important')} title=${`Treat ${t.addr} as a person: show their mail in People`}>Sender is a person</button>
           </div>
           ${msgs.slice(0, 40).map((m) => html`
             <div class=${cx('row', ageBand(m.ts), S.open?.key === m.key && 'sel')} key=${m.key} onClick=${() => openMessage(m)}>
@@ -286,7 +286,7 @@ function Home() {
   const st = user.settings;
   const since = (days) => now - days * DAY;
 
-  const needs = model.needsReply.filter(passes);
+  const needs = model.people.filter(passes);
   const needsCurrent = needs.filter((m) => m.eff >= since(st.needsPeriod));
   const needsOld = needs.filter((m) => m.eff < since(st.needsPeriod));
   const attention = model.attention.filter(passes);
@@ -299,9 +299,9 @@ function Home() {
   return html`
     <div class="main-inner">
       <${ActiveFilters} />
-      <${Section} label="Needs reply" hint="People you write to, waiting to hear from you" periodKey="needsPeriod">
+      <${Section} label="People" hint="Conversations with people, whoever wrote last" periodKey="needsPeriod">
         ${needsCurrent.map((m) => html`<${PersonRow} key=${m.key} m=${m} />`)}
-        ${needsCurrent.length === 0 && html`<div class="empty">${needsOld.length ? 'Nobody new is waiting on you in this period.' : 'Nobody is waiting on you.'}</div>`}
+        ${needsCurrent.length === 0 && html`<div class="empty">${needsOld.length ? 'No conversations with people in this period.' : 'No conversations with people yet.'}</div>`}
         ${showOld && needsOld.map((m) => html`<${PersonRow} key=${m.key} m=${m} />`)}
         ${needsOld.length > 0 && html`<button class="more" onClick=${() => setShowOld(!showOld)}>${showOld ? 'Hide' : 'Show'} older than ${periodLabel(st.needsPeriod)}</button>`}
       <//>
@@ -356,7 +356,7 @@ function onGlobalKey(e) {
     },
     e: () => {
       if (!target) return;
-      const waiting = S.model.needsReply.find((m) => m.acct === S.open.acct && m.threadId === S.open.threadId);
+      const waiting = S.model.people.find((m) => m.acct === S.open.acct && m.threadId === S.open.threadId);
       if (waiting) markDone(waiting); else if (target.reasons) ack(target);
       closeReader();
     },

@@ -318,7 +318,7 @@ export function Reader() {
   // Actions apply to the message you opened, or the latest one that is not yours.
   const target = focus.kind !== 'me' ? focus : ([...thread].reverse().find((m) => m.kind !== 'me') || last);
   const sender = focus.kind !== 'me' ? model.senders.get(focus.from.addr) : null;
-  const waiting = model.needsReply.find((m) => m.acct === open.acct && m.threadId === open.threadId);
+  const waiting = model.people.find((m) => m.acct === open.acct && m.threadId === open.threadId); // this conversation's row in People
   const inAttention = target.reasons && !user.acked[target.key];
   const flagged = !!user.flagged[target.key];
   const acct = accountOf(open.acct);
@@ -346,8 +346,8 @@ export function Reader() {
           <button class="btn" onClick=${() => startReply(target, 'forward')} title="Forward (f)">Forward</button>
           <span class="sp"></span>
           ${bumpTargetFor(target) && html`<button class="btn" onClick=${() => bump(bumpTargetFor(target))} title="Move to the top of its list and keep it from fading (b)">Bump</button>`}
-          ${waiting && html`<button class="btn" onClick=${() => { markDone(waiting); toast('Marked as no reply needed'); }} title="No reply needed (e)">No reply needed</button>`}
-          ${inAttention && !flagged && html`<button class="btn" onClick=${() => ack(target)} title="Dismiss (e)">Dismiss</button>`}
+          ${waiting && html`<button class="btn" onClick=${() => { markDone(waiting); toast('Dismissed from People until there is something new'); }} title="Remove from People until the conversation moves on (e)">Dismiss</button>`}
+          ${inAttention && !flagged && !waiting && html`<button class="btn" onClick=${() => ack(target)} title="Dismiss from Attention (e)">Dismiss</button>`}
           ${target.kind !== 'me' && html`<button class="btn" onClick=${() => toggleFlag(target)}>${flagged ? 'Unflag' : 'Flag for attention'}</button>`}
         </div>
         <div class="sender-strip">
@@ -355,7 +355,7 @@ export function Reader() {
           ${sender && html`
             <span>${sender.addr}</span>
             <span class="seg" title="How mail from this address is treated">
-              ${[['important', 'Important'], ['channel', 'Notifications']].map(([k, label]) => html`
+              ${[['important', 'Person'], ['channel', 'Machine']].map(([k, label]) => html`
                 <button class=${cx(sender.kind === k && 'on')} onClick=${() => setSenderKind(sender.addr, sender.kind === k && !sender.auto ? null : k)}>${label}</button>`)}
             </span>
             ${sender.kind === 'new' && html`<span>Unfamiliar sender — choose how to treat them</span>`}

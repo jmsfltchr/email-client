@@ -157,13 +157,13 @@ export const markDone = (m) => mutate((u) => { u.done[m.key] = true; delete u.bu
 export const undoDone = (m) => mutate((u) => { delete u.done[m.key]; });
 export const ack = (m) => mutate((u) => { u.acked[m.key] = true; delete u.flagged[m.key]; delete u.bumped[m.key]; });
 /**
- * What Bump applies to for an open conversation: the message waiting in Needs reply, else the
+ * What Bump applies to for an open conversation: its row in People, else the
  * message if it is in Attention, else the notification topic it belongs to.
  */
 export function bumpTargetFor(target) {
   if (!target || !S.model) return null;
-  const waiting = S.model.needsReply.find((m) => m.acct === target.acct && m.threadId === target.threadId);
-  if (waiting) return waiting;
+  const person = S.model.people.find((m) => m.acct === target.acct && m.threadId === target.threadId);
+  if (person) return person;
   if (S.model.attention.includes(target)) return target;
   return (target.topic && S.model.topics.get(target.topic)) || null;
 }

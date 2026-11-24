@@ -115,18 +115,18 @@ export function Settings() {
       </div>
 
       <h3>Senders</h3>
-      <p>Anyone you have ever written to is important. Addresses that send repeatedly and never get a reply become notification channels.</p>
+      <p>Every sender is either a <b>Person</b>, whose conversations appear in People, or a <b>Machine</b>, whose mail is grouped by topic in Notifications. Anyone you have ever written to is a person; addresses that send repeatedly and never get a reply are machines. Override any address here.</p>
       <div class="card">
         <${NumberRow} label="Channel threshold" hint="emails received with no reply ever sent" k="channelMin" min=${2} max=${50} />
         <div class="form-row">
           <label>Find a sender<small>override how any address is treated</small></label>
-          <input class="input" value=${senderQ} onInput=${(e) => setSenderQ(e.target.value)} placeholder="Name or address… (showing important senders)" />
+          <input class="input" value=${senderQ} onInput=${(e) => setSenderQ(e.target.value)} placeholder="Name or address… (showing people)" />
         </div>
         ${senders.map((s) => html`
           <div class="form-row" key=${s.addr}>
             <span style=${{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}><b>${s.name || s.addr}</b> ${s.name && html`<span class="mono" style=${{ color: 'var(--muted)' }}>${s.addr}</span>`}</span>
             <span class="seg">
-              ${[['important', 'Important'], ['channel', 'Notifications']].map(([k, label]) => html`
+              ${[['important', 'Person'], ['channel', 'Machine']].map(([k, label]) => html`
                 <button class=${cx(s.kind === k && 'on')} onClick=${() => setSenderKind(s.addr, k)}>${label}</button>`)}
             </span>
             <button class="btn ghost small" disabled=${s.auto} onClick=${() => setSenderKind(s.addr, null)}>${s.auto ? 'automatic' : 'Reset'}</button>
@@ -143,7 +143,7 @@ export function Settings() {
           <button class="btn small" onClick=${() => { setKw(DEFAULT_KEYWORDS.join('\n')); setSetting('keywords', [...DEFAULT_KEYWORDS]); }}>Restore defaults</button>
         </div>
         <div class="form-row">
-          <label>Desktop notifications<small>only for important people and escalated mail</small></label>
+          <label>Desktop notifications<small>only for mail from people and escalated mail</small></label>
           <input type="checkbox" checked=${st.notify} onChange=${(e) => setSetting('notify', e.target.checked)} />
         </div>
         <div class="form-row">

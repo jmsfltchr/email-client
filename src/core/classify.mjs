@@ -1,7 +1,7 @@
 // Pure classification engine. Takes message metadata + user state and derives:
 //   - important senders (anyone I've written to, mass senders excepted), notification channels, new senders
 //   - topics per channel (recurring subject patterns)
-//   - "needs reply" threads and out-of-the-ordinary "attention" messages
+//   - the People list (conversations with people) and out-of-the-ordinary "attention" messages
 // No I/O; runs in the renderer and in node tests.
 
 import { domainOf, rootDomain, orgName, channelName, looksAutomated } from './domains.mjs';
@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS = {
   nearDays: 7, // within this: current
   farDays: 30, // within this: fading; beyond: search only
   period: 7, // notifications panel window, days
-  needsPeriod: 30, // Needs reply window, days
+  needsPeriod: 30, // People window, days
   attnPeriod: 30, // Attention window, days
   channelMin: 3, // received >= this many and never replied => notification channel
   keywords: DEFAULT_KEYWORDS,
@@ -44,7 +44,7 @@ export function defaultState() {
     quietTopics: {}, // topic key -> true: never auto-flag
     flagged: {}, // message key -> ts (manually escalated)
     acked: {}, // message key -> true (attention dismissed)
-    done: {}, // message key -> true (needs-reply dismissed)
+    done: {}, // message key -> true (dismissed from People until the conversation moves on)
     read: {}, // message key -> true: opened here while Gmail still has it unread
     imageSenders: {}, // addr -> true: always load remote images from this sender
     topicDismissed: {}, // topic key -> ts of its newest message when dismissed; hidden until newer mail
@@ -307,7 +307,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
   // --- senders
   const senders = new Map();
   for (const m of messages) {
-    if (isMine(m, myAddrs)) { m.kind = 'me'; m.topic = null; m.reasons = null; continue; }
+    if (isMine(m, myAddrs)) { m.kind = 'me'; m.topic = null; m.reasons = null; m.eff = state.bumped[m.key] || m.ts; continue; }
     const a = m.from.addr;
     let s = senders.get(a);
     if (!s) {
@@ -335,7 +335,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
   const kwRe = keywordRegex(st.keywords);
   const topics = new Map();
   for (const s of senders.values()) {
-    // eff: the date used for ordering and fading in Needs reply and Attention (last bump, else received).
+    // eff: the date used for ordering and fading in People and Attention (last bump, else received).
     for (const m of s.msgs) { m.kind = s.kind; m.root = s.root; m.topic = null; m.reasons = null; m.eff = state.bumped[m.key] || m.ts; }
     if (s.kind !== 'channel') continue;
     const scoped = rules.filter((r) => r.scope === '*' || r.scope === s.addr || r.scope === s.root);
@@ -385,7 +385,7 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
   }
   attention.sort((a, b) => b.eff - a.eff);
 
-  // --- threads + needs reply
+  // --- threads
   const threads = new Map();
   for (const m of messages) {
     const k = `${m.acct}:${m.threadId}`;
@@ -393,19 +393,33 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
     if (!t) threads.set(k, (t = []));
     t.push(m);
   }
-  const needsReply = [];
+  // --- People: every conversation with a person, represented by its latest message from them or
+  // from me. `awaiting` marks the ones where they spoke last.
+  const toPerson = (m) => {
+    if (m.auto || m.bulk) return false; // machine-generated on my behalf
+    const others = m.to.filter((a) => !myAddrs.has(a));
+    return !others.length /* a note to myself */ || others.some((a) => senders.get(a)?.kind !== 'channel');
+  };
+  const people = [];
   for (const t of threads.values()) {
     if (t.length > 1) t.sort((a, b) => a.ts - b.ts);
     let cand = null;
-    for (let i = t.length - 1; i >= 0; i--) {
-      if (t[i].kind === 'me') break;
-      if (t[i].kind === 'important') { cand = t[i]; break; }
+    for (let i = t.length - 1; i >= 0 && !cand; i--) {
+      if (t[i].kind === 'important' || (t[i].kind === 'me' && toPerson(t[i]))) cand = t[i];
     }
-    if (cand && !state.done[cand.key]) needsReply.push(cand);
+    if (!cand || state.done[cand.key]) continue;
+    cand.awaiting = cand.kind === 'important';
+    if (cand.awaiting) cand.peer = cand.from;
+    else {
+      const them = t.findLast((m) => m.kind === 'important');
+      const addr = cand.to.find((a) => !myAddrs.has(a));
+      cand.peer = them?.from || (addr ? { name: senders.get(addr)?.name || '', addr } : { name: 'Note to self', addr: cand.from.addr });
+    }
+    people.push(cand);
   }
-  needsReply.sort((a, b) => b.eff - a.eff);
+  people.sort((a, b) => b.eff - a.eff);
 
-  return { senders, topics, threads, needsReply, attention, now };
+  return { senders, topics, threads, people, attention, now };
 }
 
 /**
