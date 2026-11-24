@@ -17,7 +17,7 @@ export const S = {
   photosDenied: [], // accounts signed in without the contacts permission
   user: normaliseState(null),
   model: null,
-  view: 'home', // home | search | settings
+  view: 'home', // home | search | testers | settings
   acctSel: new Set(), // empty = all accounts
   tagSel: new Set(), // 'o:root' | 'c:addr' | 't:topicKey'; empty = everything
   open: null, // {acct, threadId, key}
@@ -30,6 +30,8 @@ export const S = {
   progress: {},
   errors: {},
   toast: null,
+  // Testers tab: people tracked in a Notion database, and their conversations open in browser panes.
+  testers: { visited: false, status: null, loading: false, error: null, schema: null, rows: [], sel: null, q: '', tags: new Set(), chats: {}, active: null, wide: false, connecting: false },
 };
 
 export let api = null;

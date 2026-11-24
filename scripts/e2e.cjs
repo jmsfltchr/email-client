@@ -533,6 +533,72 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.keyboard.press('Escape');
   });
 
+  await step('testers: people from Notion, tags, links per platform, conversations in a signed-in pane', async () => {
+    const T = () => page.evaluate(async () => { const t = (await import('./store.mjs')).S.testers; return { active: t.active, chats: t.chats, sel: t.sel, n: t.rows.length }; });
+    await page.keyboard.press('t');
+    await page.waitForSelector('.t-list .row');
+    assert.deepStrictEqual(await page.locator('.t-list .who').allTextContents(), ['Dana Whitfield', 'Marcus Oyelaran', 'Priya Raman', 'Tomás Lindqvist']);
+    // tag filter and text filter
+    await page.locator('.t-tags .tag', { hasText: 'found a bug' }).click();
+    assert.deepStrictEqual(await page.locator('.t-list .who').allTextContents(), ['Marcus Oyelaran']);
+    await page.click('.t-tags >> text=Clear');
+    await page.fill('[aria-label="Find a person"]', 'hotel wifi');
+    assert.deepStrictEqual(await page.locator('.t-list .who').allTextContents(), ['Marcus Oyelaran']);
+    await page.fill('[aria-label="Find a person"]', '');
+    // details: add a tag (a new one) and a link; both show on the row
+    const row = page.locator('.t-list .row', { hasText: 'Priya Raman' });
+    await row.click();
+    await page.waitForSelector('.t-detail');
+    assert.equal(await page.locator('.t-detail .t-link').count(), 3);
+    await page.fill('[aria-label="Add to Tags"]', 'night owl');
+    await page.press('[aria-label="Add to Tags"]', 'Enter');
+    await row.locator('.tag', { hasText: 'night owl' }).waitFor();
+    await page.fill('.t-linkform [aria-label="Conversation link or email address"]', 'not a link');
+    assert.ok(await page.locator('.t-linkform button:text-is("Add")').isDisabled());
+    await page.fill('.t-linkform [aria-label="Conversation link or email address"]', 'https://discord.com/channels/@me/42');
+    await page.fill('.t-linkform [aria-label="Label"]', 'DM');
+    await page.click('.t-linkform button:text-is("Add")');
+    await page.locator('.t-detail .t-link', { hasText: 'Discord' }).waitFor();
+    assert.deepStrictEqual(await row.locator('.plat').allTextContents(), ['SL', '@', 'IG', 'DC']);
+    await shot('testers');
+    // a conversation opens in the chat profile, beside the list; another platform gets its own pane
+    await page.locator('.t-detail .t-link .open', { hasText: 'Slack' }).click();
+    await page.waitForSelector('.chat-stack webview');
+    assert.equal(await page.locator('.chat-stack webview').getAttribute('partition'), 'persist:stillmail-chat');
+    assert.deepStrictEqual((await T()).chats.slack.url, 'https://app.slack.com/client/T0FERNHILL/D0PRIYA');
+    await page.locator('.t-list .row', { hasText: 'Marcus' }).locator('.plat-btn').first().click();
+    assert.equal((await T()).active, 'discord');
+    assert.equal(await page.locator('.chat-stack webview').count(), 2);
+    assert.equal(await page.locator('.chat-panes .web.off').count(), 1);
+    await shot('testers-chat');
+    // panes stay alive across tabs
+    await page.click('.nav >> text=Focus');
+    await page.waitForSelector('section[aria-label="People"]');
+    assert.equal(await page.locator('.chat-stack webview').count(), 2);
+    assert.equal(await page.locator('.testers.off').count(), 1);
+    await page.click('.nav >> text=Testers');
+    assert.equal(await page.locator('.testers.off').count(), 0);
+    // email opens the latest mail with that person in the reader, and the chat steps aside
+    await page.locator('.t-list .row', { hasText: 'Priya Raman' }).locator('.plat-btn', { hasText: '@' }).click();
+    await page.waitForSelector('.reader iframe');
+    assert.equal(await page.locator('.chat-stack.off').count(), 1);
+    await page.locator('.reader-h h1').click();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('.chat-stack.off').count(), 0);
+    await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    assert.equal(await page.locator('.chat-stack').count(), 0);
+    // add and remove a person
+    await page.fill('[aria-label="Add a person"]', 'Zed Tester');
+    await page.press('[aria-label="Add a person"]', 'Enter');
+    await page.locator('.t-list .row.sel', { hasText: 'Zed Tester' }).waitFor();
+    await page.click('.t-foot >> text=Remove');
+    await page.locator('.toast', { hasText: 'Notion trash' }).waitFor();
+    assert.equal((await T()).n, 4);
+    await page.click('.toast >> text=Undo');
+    await page.locator('.t-list .row', { hasText: 'Zed Tester' }).waitFor();
+  });
+
   await step('settings renders', async () => {
     await page.click('.nav >> text=Settings');
     await page.waitForSelector('.settings');

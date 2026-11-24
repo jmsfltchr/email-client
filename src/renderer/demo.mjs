@@ -1,6 +1,8 @@
 // Demo backend: a deterministic fake mailbox implementing the same API as the Electron preload.
 // Used with `npm run demo`, from the welcome screen, or when the UI is opened in a plain browser.
 
+import { createDemoNotion } from './testers-demo.mjs';
+
 const MIN = 60000, HOUR = 3600000, DAY = 86400000;
 const WORK = 'alex@fernhill.example';
 const HOME = 'alex.rowan@mailbox.example';
@@ -213,6 +215,7 @@ const DEMO_ICONS = {
 };
 
 export function createDemoApi() {
+  const notion = createDemoNotion();
   const demo = generateDemo();
   const byKey = new Map(demo.messages.map((m) => [m.key, m]));
   const listeners = new Set();
@@ -227,6 +230,7 @@ export function createDemoApi() {
   };
 
   return {
+    ...notion,
     async bootstrap() {
       const unread = {};
       const fresh = demo.messages.filter((m) => !m.sent && (Date.now() - m.ts < 8 * 3600000 || /Sunday lunch|Payment failed/.test(m.subject)));

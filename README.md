@@ -29,6 +29,16 @@ While the consent screen is in *Testing*, Google expires sign-ins after 7 days. 
 
 Stillmail requests read-only access to mail and contacts, plus permission to send. It never archives, labels, marks as read or deletes anything in Gmail. All of its own state (who is important, topic order, dismissals) is stored locally.
 
+## Connecting Notion
+
+The Testers tab reads and writes one Notion database directly on Notion's servers, using an internal integration that you add to that database only.
+
+1. In Notion, open **Settings → Integrations**, create an **internal integration** with read, update and insert content capabilities, and copy its secret.
+2. Open the database as a full page, choose **••• → Connections**, and add the integration. It can see that page and nothing else in the workspace.
+3. In Stillmail, open **Testers**, paste the secret and the database's link (**••• → Copy link**), and press **Connect**.
+
+Stillmail adds a text column called **Conversation links** (one link per line, readable and clickable in Notion too) and, if the database has no multi-select column yet, a **Tags** column. Everything else is left as it is. The secret is stored encrypted with the operating system's keychain. *Remove* moves a person to Notion's trash, where it can be restored.
+
 ## How it works
 
 **People.** Every conversation with a person, newest first, whoever wrote last: mail from people, your replies, and mail you start (including notes to yourself). A conversation where they wrote last shows how long it has been waiting once it is more than a few days old; one where you wrote last is shown lighter with "You:". *Dismiss* removes a conversation until something new arrives in it. A sender is a **Person** if you have ever written to them. Automatic replies (such as a vacation responder) do not count, and a mass sender (list headers or a no-reply style address) only counts once you have written to it at least twice and at least once for every ten emails it has sent.
@@ -70,6 +80,8 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Search.** Narrow by sender first: pick one or more domains, then exact addresses, then type text. Counts update as you go. Quick search covers subjects and previews of synced mail instantly; press Enter to run the same query against full message text on Gmail.
 
+**Testers.** A separate tab for keeping track of the people you talk to during a test programme, whichever app the conversation is in. The list lives in one Notion database (see *Connecting Notion* below): each row is a person, the database's own columns (multi-select, select, status, checkbox, date, number, text) are shown and editable as tags and notes, and each person can have any number of conversation links. Paste a link and the platform is recognised from its address: Instagram, Discord, Slack and Teams open in a browser pane beside the list, anything else opens there as a plain web page, and an email address shows the latest mail with that person in the reader (or starts a new message). Each platform keeps its own pane, so switching between a Slack and a Discord conversation does not reload either, and panes stay open while you visit other tabs. The panes use their own browser profile: you sign in to each service once, and those sign-ins are kept apart from the pane that opens links found in email. ⌘-click (Ctrl-click) a link to use your default browser instead.
+
 **Desktop notifications** fire only for mail from people and escalated mail.
 
 ## Keyboard
@@ -79,6 +91,7 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 | `c` | Compose |
 | `/` | Search |
 | `g` | Focus (home) |
+| `t` | Testers |
 | `,` | Settings |
 | `r` / `a` / `f` | Reply / reply all / forward the open conversation |
 | `b` | Bump the open conversation (or its topic) to the top of its list |

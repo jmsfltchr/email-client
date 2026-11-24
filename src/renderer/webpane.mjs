@@ -16,7 +16,12 @@ export function openLink(url, event) {
 export const closeWeb = () => set({ web: null });
 
 export function WebPane() {
-  const { web } = S;
+  return html`<${Browser} url=${S.web.url} n=${S.web.n} partition=${PARTITION} onClose=${closeWeb} />`;
+}
+
+/** A web page with navigation controls. `n` changes whenever the caller wants `url` loaded afresh; `off` hides it without unloading. */
+export function Browser({ url, n, partition, onClose, off = false, label = 'Web page' }) {
+  const web = { url, n };
   const view = useRef();
   const [st, setSt] = useState({ url: web.url, title: '', loading: true, back: false, forward: false, error: null });
 
@@ -50,7 +55,7 @@ export function WebPane() {
   let host = '';
   try { host = new URL(st.url).host; } catch { /* keep empty */ }
   return html`
-    <aside class="web" aria-label="Web page">
+    <aside class=${cx('web', off && 'off')} aria-label=${label} aria-hidden=${off}>
       <div class="web-bar">
         <button class="btn ghost small" disabled=${!st.back} onClick=${act((w) => w.goBack())} title="Back" aria-label="Back">←</button>
         <button class="btn ghost small" disabled=${!st.forward} onClick=${act((w) => w.goForward())} title="Forward" aria-label="Forward">→</button>
@@ -60,7 +65,7 @@ export function WebPane() {
           ${st.title && html`<span class="web-title"> — ${st.title}</span>`}
         </div>
         <button class="btn small" onClick=${() => api.openExternal(st.url)} title="Open this page in your default browser. Tip: ⌘-click (Ctrl-click) a link to go straight there.">Open in default browser</button>
-        <button class="btn ghost small" onClick=${closeWeb} title="Close web page (Esc)" aria-label="Close web page">✕</button>
+        <button class="btn ghost small" onClick=${onClose} title=${`Close ${label.toLowerCase()}`} aria-label=${`Close ${label.toLowerCase()}`}>✕</button>
       </div>
       <div class=${cx('web-progress', st.loading && 'on')}></div>
       ${st.error && html`
@@ -70,6 +75,6 @@ export function WebPane() {
           <button class="btn" onClick=${() => api.openExternal(st.url)}>Open in default browser</button>
         </div>`}
       <!-- allowpopups only lets the main process see new-window requests; it denies them and loads the URL here -->
-      <webview ref=${view} partition=${PARTITION} allowpopups=${true} class=${cx(st.error && 'hidden')}></webview>
+      <webview ref=${view} partition=${partition} allowpopups=${true} class=${cx(st.error && 'hidden')}></webview>
     </aside>`;
 }
