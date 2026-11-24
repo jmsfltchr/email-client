@@ -1,5 +1,5 @@
-// Minimal Notion API client. Talks straight to api.notion.com with an internal integration secret,
-// which can only see the pages that integration has been added to.
+// Minimal Notion API client. Talks straight to api.notion.com with an API key created in Notion,
+// which can only see the pages that key has been given access to.
 
 import { NOTION_VERSION } from '../core/notion.mjs';
 
@@ -8,9 +8,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function explain(status, body) {
   const code = body?.code || '';
-  if (status === 401) return 'Notion did not accept that integration secret.';
-  if (status === 404 || code === 'object_not_found') return 'Notion cannot see that database. Open it in Notion, choose ••• → Connections, and add your integration.';
-  if (status === 403 || code === 'restricted_resource') return 'The integration is not allowed to do that. Give it read, update and insert content capabilities in its Notion settings.';
+  if (status === 401) return 'Notion did not accept that API key.';
+  if (status === 404 || code === 'object_not_found') return 'Notion cannot see that database with this API key. Give the key access to it: open the database in Notion and add the key under ••• → Connections.';
+  if (status === 403 || code === 'restricted_resource') return 'This API key is not allowed to do that. Give it read, update and insert content permissions in its Notion settings.';
   return body?.message || `Notion answered ${status}.`;
 }
 

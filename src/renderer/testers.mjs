@@ -151,13 +151,13 @@ function Connection() {
       <h1>${connected ? 'Notion connection' : 'Testers'}</h1>
       ${!connected && html`<p>Keep track of everyone you are talking to during a test programme, whichever app the conversation is in. The list lives in one Notion database, read and written directly on Notion's servers from this computer.</p>`}
       <ol>
-        <li>In Notion, open <a href="https://www.notion.so/profile/integrations" onClick=${(e) => { e.preventDefault(); api.openExternal(e.currentTarget.href); }}>Settings → Integrations</a>, create an <b>internal integration</b>, and copy its secret.</li>
-        <li>Open your database as a full page, choose <b>••• → Connections</b>, and add that integration. It can then see that page and nothing else in your workspace.</li>
+        <li>In Notion's <a href="https://www.notion.so/developers" onClick=${(e) => { e.preventDefault(); api.openExternal(e.currentTarget.href); }}>developer settings</a>, create an <b>API key</b> for Stillmail and copy it.</li>
+        <li>Make sure the key can reach your database. If Notion asks which pages the key may use, choose the database; otherwise open the database as a full page and add the key under <b>••• → Connections</b>.</li>
         <li>Copy the database's link (<b>••• → Copy link</b>) and paste both below.</li>
       </ol>
       <div class="card">
-        <div class="form-row"><label>Integration secret${connected && html`<small>Leave empty to keep the current one</small>`}</label>
-          <input class="input mono" type="password" value=${token} onInput=${(e) => setToken(e.target.value)} placeholder=${connected ? '••••••••' : 'ntn_…'} aria-label="Integration secret" /></div>
+        <div class="form-row"><label>Notion API key${connected && html`<small>Leave empty to keep the current one</small>`}</label>
+          <input class="input mono" type="password" value=${token} onInput=${(e) => setToken(e.target.value)} placeholder=${connected ? '••••••••' : 'ntn_…'} aria-label="Notion API key" /></div>
         <div class="form-row"><label>Database link</label>
           <input class="input mono" value=${database} onInput=${(e) => setDatabase(e.target.value)} placeholder="https://www.notion.so/…" aria-label="Database link" /></div>
       </div>
@@ -166,7 +166,7 @@ function Connection() {
       <div class="form-row" style=${{ padding: '6px 0', border: 0 }}>
         <button class="btn primary" disabled=${busy || !database.trim() || (!connected && !token.trim())} onClick=${() => run(() => api.notionConnect({ token, database }))}>${busy ? 'Connecting…' : connected ? 'Save' : 'Connect'}</button>
         ${connected && html`<button class="btn" onClick=${() => T({ connecting: false })}>Cancel</button>`}
-        ${connected && html`<button class="btn danger" disabled=${busy} title="Forget the secret and the database. Nothing is deleted in Notion." onClick=${() => run(() => api.notionDisconnect())}>Disconnect</button>`}
+        ${connected && html`<button class="btn danger" disabled=${busy} title="Forget the API key and the database. Nothing is deleted in Notion." onClick=${() => run(() => api.notionDisconnect())}>Disconnect</button>`}
       </div>
     </div>`;
 }

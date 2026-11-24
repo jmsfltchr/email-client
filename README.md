@@ -31,13 +31,13 @@ Stillmail requests read-only access to mail and contacts, plus permission to sen
 
 ## Connecting Notion
 
-The Testers tab reads and writes one Notion database directly on Notion's servers, using an internal integration that you add to that database only.
+The Testers tab reads and writes one Notion database directly on Notion's servers, using an API key that you create in Notion and give access to that database.
 
-1. In Notion, open **Settings → Integrations**, create an **internal integration** with read, update and insert content capabilities, and copy its secret.
-2. Open the database as a full page, choose **••• → Connections**, and add the integration. It can see that page and nothing else in the workspace.
-3. In Stillmail, open **Testers**, paste the secret and the database's link (**••• → Copy link**), and press **Connect**.
+1. In Notion's developer settings (`notion.so/developers`), create an **API key** for Stillmail that can read, update and insert content, and copy it.
+2. Make sure the key can reach the database. If Notion asks which pages the key may use, choose the database; otherwise open the database as a full page and add the key under **••• → Connections**.
+3. In Stillmail, open **Testers**, paste the API key and the database's link (**••• → Copy link**), and press **Connect**.
 
-Stillmail adds a text column called **Conversation links** (one link per line, readable and clickable in Notion too) and, if the database has no multi-select column yet, a **Tags** column. Everything else is left as it is. The secret is stored encrypted with the operating system's keychain. *Remove* moves a person to Notion's trash, where it can be restored.
+Stillmail adds a text column called **Conversation links** (one link per line, readable and clickable in Notion too) and, if the database has no multi-select column yet, a **Tags** column. Everything else is left as it is. The API key is stored encrypted with the operating system's keychain. *Remove* moves a person to Notion's trash, where it can be restored.
 
 ## How it works
 

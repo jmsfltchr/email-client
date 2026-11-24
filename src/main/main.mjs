@@ -321,10 +321,10 @@ const handlers = {
 
   notionStatus,
 
-  /** Connect (or re-point) the Testers tab. An empty secret keeps the one already stored. */
+  /** Connect (or re-point) the Testers tab. An empty key keeps the one already stored. */
   async notionConnect({ token, database } = {}) {
     const secret = (token || '').trim() || (config.notion ? dec(config.notion.tokenEnc) : '');
-    if (!secret) throw new Error('Paste the integration secret from Notion.');
+    if (!secret) throw new Error('Paste your Notion API key.');
     const id = parseDatabaseId(database);
     if (!id) throw new Error('That does not look like a Notion database link. Copy it with "Copy link" on the database page.');
     const client = new Notion(secret);
