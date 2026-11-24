@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rootDomain, orgName, channelName, looksAutomated } from '../src/core/domains.mjs';
 import { parseAddressList, formatAddress } from '../src/core/address.mjs';
-import { subjectTemplate, baseSubject, keywordRegex, buildModel, defaultState, reorder, orderTopics, DEFAULT_KEYWORDS, DAY } from '../src/core/classify.mjs';
+import { subjectTemplate, baseSubject, keywordRegex, buildModel, defaultState, topicRows, DEFAULT_KEYWORDS, DAY } from '../src/core/classify.mjs';
 import { generateDemo } from '../src/renderer/demo.mjs';
 
 test('root domain, org and channel names', () => {
@@ -128,15 +128,42 @@ test('topic clustering on the demo mailbox', () => {
   assert.equal(m2.topics.get('builds@circleci.com|r:r1').count, 60);
 });
 
-test('reorder pins the dragged topic and everything above it', () => {
-  const vis = ['a', 'b', 'c', 'd', 'e'];
-  assert.deepEqual(reorder([], vis, 'd', 'b', false), ['a', 'd']);
-  assert.deepEqual(reorder(['a', 'd'], ['a', 'd', 'b', 'c', 'e'], 'e', 'a', false), ['e', 'a', 'd']);
-  assert.deepEqual(reorder(['a', 'd'], ['a', 'd', 'b', 'c', 'e'], 'a', 'd', true), ['d', 'a']);
-  // hidden pinned topic "h" keeps its place after "a"
-  assert.deepEqual(reorder(['a', 'h', 'd'], ['a', 'd', 'b'], 'b', 'a', false), ['b', 'a', 'h', 'd']);
-  const ordered = orderTopics([{ key: 'x', lastTs: 5 }, { key: 'y', lastTs: 9 }, { key: 'z', lastTs: 1 }], ['z']);
-  assert.deepEqual(ordered.map((t) => t.key), ['z', 'y', 'x']);
+test('notifications: topics by latest email, with bump and dismiss', () => {
+  const from = (addr) => ({ name: '', addr });
+  const mail = (addr, subject, days) => mk({ from: from(addr), subject, ts: NOW - days * DAY });
+  const msgs = [
+    ...[1, 8, 15, 22].map((d) => mail('a@one.com', 'Weekly report', d)),
+    ...[3, 4, 5].map((d) => mail('b@two.com', 'Build passed', d)),
+    ...[20, 40, 60].map((d) => mail('c@three.com', 'Statement ready', d)),
+  ];
+  const model = buildModel(msgs, defaultState(), opts);
+  const list = (user, days, passes) => topicRows(model.topics.values(), user, { cut: NOW - days * DAY, passes })
+    .map((r) => `${r.topic.addr.split('@')[1]} x${r.msgs.length}`);
+  const st = defaultState();
+  assert.deepEqual(list(st, 7), ['one.com x1', 'two.com x3'], 'most recent first, only mail inside the window');
+  assert.deepEqual(list(st, 30), ['one.com x4', 'two.com x3', 'three.com x1']);
+
+  // bump: to the top, and kept although its mail is older than the window
+  st.bumped['c@three.com|e:statement ready'] = NOW - 3600000;
+  assert.deepEqual(list(st, 7), ['three.com x1', 'one.com x1', 'two.com x3']);
+  const row = topicRows(model.topics.values(), st, { cut: NOW - 7 * DAY })[0];
+  assert.deepEqual([row.eff, row.msgs[0].ts], [NOW - 3600000, NOW - 20 * DAY], 'ordered by the bump, still showing its real latest email');
+  assert.deepEqual(list(st, 1), ['three.com x1', 'one.com x1']);
+  // a bump ages too: outside the window it no longer holds the topic
+  st.bumped['c@three.com|e:statement ready'] = NOW - 9 * DAY;
+  assert.deepEqual(list(st, 7), ['one.com x1', 'two.com x3']);
+  // newer mail outranks an older bump
+  st.bumped['b@two.com|e:build passed'] = NOW - 2 * DAY;
+  assert.deepEqual(list(st, 7), ['one.com x1', 'two.com x3']);
+
+  // dismiss: gone until newer mail, then only that mail
+  st.topicDismissed['a@one.com|e:weekly report'] = NOW - 1 * DAY;
+  assert.deepEqual(list(st, 30), ['two.com x3', 'three.com x1']);
+  st.topicDismissed['a@one.com|e:weekly report'] = NOW - 8 * DAY;
+  assert.deepEqual(list(st, 30), ['one.com x1', 'two.com x3', 'three.com x1']);
+
+  // filters apply to what is listed
+  assert.deepEqual(list(defaultState(), 30, (m) => m.from.addr !== 'a@one.com'), ['two.com x3', 'three.com x1']);
 });
 
 import { PALETTE, assignColors, hashColor, isFreeMail, initials } from '../src/core/colors.mjs';

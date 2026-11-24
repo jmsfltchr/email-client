@@ -156,7 +156,19 @@ export function toast(text, { action, onAction, ms = 4000 } = {}) {
 export const markDone = (m) => mutate((u) => { u.done[m.key] = true; delete u.bumped[m.key]; });
 export const undoDone = (m) => mutate((u) => { delete u.done[m.key]; });
 export const ack = (m) => mutate((u) => { u.acked[m.key] = true; delete u.flagged[m.key]; delete u.bumped[m.key]; });
-/** Move a message back to the top of its list, as if it had just arrived. */
+/**
+ * What Bump applies to for an open conversation: the message waiting in Needs reply, else the
+ * message if it is in Attention, else the notification topic it belongs to.
+ */
+export function bumpTargetFor(target) {
+  if (!target || !S.model) return null;
+  const waiting = S.model.needsReply.find((m) => m.acct === target.acct && m.threadId === target.threadId);
+  if (waiting) return waiting;
+  if (S.model.attention.includes(target)) return target;
+  return (target.topic && S.model.topics.get(target.topic)) || null;
+}
+
+/** Move a message or a topic back to the top of its list, as if it had just arrived. */
 export function bump(m) {
   const before = S.user.bumped[m.key];
   mutate((u) => { u.bumped[m.key] = Date.now(); });
@@ -179,10 +191,11 @@ export const toggleSenderTopic = (addr) => mutate((u) => {
 export function dismissTopic(topic) {
   const before = S.user.topicDismissed[topic.key];
   const newest = S.model.topics.get(topic.key)?.lastTs ?? topic.lastTs;
-  mutate((u) => { u.topicDismissed[topic.key] = newest; });
+  const bumped = S.user.bumped[topic.key];
+  mutate((u) => { u.topicDismissed[topic.key] = newest; delete u.bumped[topic.key]; });
   toast('Dismissed until new mail arrives on this topic', {
     action: 'Undo',
-    onAction: () => { mutate((u) => { if (before) u.topicDismissed[topic.key] = before; else delete u.topicDismissed[topic.key]; }); set({ toast: null }); },
+    onAction: () => { mutate((u) => { if (before) u.topicDismissed[topic.key] = before; else delete u.topicDismissed[topic.key]; if (bumped) u.bumped[topic.key] = bumped; }); set({ toast: null }); },
   });
 }
 export const toggleQuiet = (topicKey) => mutate((u) => {

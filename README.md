@@ -35,7 +35,7 @@ Stillmail requests read-only access to mail and contacts, plus permission to sen
 
 **Notification channels.** An address that has sent you several emails (3 by default) and never had a reply is a notification channel. So is anything with bulk-mail headers or a no-reply style address. You can override any address in the reader or in Settings.
 
-**Topics.** Within a channel, subjects are reduced to a pattern (ids, dates and amounts are collapsed) and grouped, so `Your order #123 has shipped` and `Your order #456 has shipped` are one topic. Shared `[tags]`, single varying words, and common prefixes are also grouped. A sender whose subject changes with every issue, such as a newsletter, is treated as a single topic named after the address alone; this is detected automatically, and *One topic for this sender* forces it for any address. When that is not enough, *Define topic by pattern…* lets you group with a regular expression. Topics are shown as `Org › channel › topic` with the time of the latest email, over the period chosen at the top of the panel. Drag the handle (or Alt+↑/↓) to pin topics in priority order; unpinned topics follow by recency.
+**Topics.** Within a channel, subjects are reduced to a pattern (ids, dates and amounts are collapsed) and grouped, so `Your order #123 has shipped` and `Your order #456 has shipped` are one topic. Shared `[tags]`, single varying words, and common prefixes are also grouped. A sender whose subject changes with every issue, such as a newsletter, is treated as a single topic named after the address alone; this is detected automatically, and *One topic for this sender* forces it for any address. When that is not enough, *Define topic by pattern…* lets you group with a regular expression. Topics are shown as `Org › channel › topic` with the time of the latest email, over the period chosen at the top of the panel. Topics are listed by their most recent email, newest first.
 
 **Attention.** A notification email is escalated when:
 
@@ -50,7 +50,7 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 
 **Unread dot.** Rows in Needs reply and Attention show a blue dot while Gmail still has the message unread and you have not opened it here. Reading it on your phone or in Gmail clears the dot within a minute; opening it in Stillmail clears it here only, because Stillmail never changes anything in Gmail. There is still no unread count.
 
-**Bump.** Any item in Needs reply or Attention can be bumped (row button, reader button, or `b`). It jumps to the top, and its bump date replaces its received date for ordering and fading, so it stays on the list while untouched items slip away. Bump again to keep it there. The age shown is still the real one, with an ↑ marker.
+**Bump.** Any row in Needs reply, Attention or Notifications can be bumped (row button, reader button, or `b`). It jumps to the top, and its bump date replaces its received date for ordering and fading, so it stays on the list while untouched rows slip away. Bump again to keep it there; newer mail on a bumped topic simply takes over. The age shown is still the real one, with an ↑ marker.
 
 **Time tabs.** Needs reply, Attention and Notifications each have their own 24h / 3d / 7d / 30d / 90d tabs, remembered separately. Needs reply and Attention use the bump date where there is one, and anything you flagged yourself stays in Attention whatever the tab. Needs reply keeps a *Show older* link so nobody is lost.
 
@@ -81,7 +81,7 @@ Dismiss an item, or choose *Never flag topic* if a topic is always noise. Channe
 | `g` | Focus (home) |
 | `,` | Settings |
 | `r` / `a` / `f` | Reply / reply all / forward the open conversation |
-| `b` | Bump the open conversation to the top of its list |
+| `b` | Bump the open conversation (or its topic) to the top of its list |
 | `e` | Dismiss or mark no reply needed, and close |
 | `⌘F` / `Ctrl+F` | Find in the open conversation (otherwise go to Search) |
 | `Esc` | Close reader or dialog |

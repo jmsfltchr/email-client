@@ -41,7 +41,6 @@ export function defaultState() {
     senderKind: {}, // addr -> 'important' | 'channel'
     senderTopic: {}, // addr -> true: everything from this address is one topic
     topicRules: [], // [{id, scope, pattern, name}]
-    topicOrder: [], // topic keys in user priority order
     quietTopics: {}, // topic key -> true: never auto-flag
     flagged: {}, // message key -> ts (manually escalated)
     acked: {}, // message key -> true (attention dismissed)
@@ -50,7 +49,7 @@ export function defaultState() {
     imageSenders: {}, // addr -> true: always load remote images from this sender
     topicDismissed: {}, // topic key -> ts of its newest message when dismissed; hidden until newer mail
     unsubscribed: {}, // sender addr -> ts an unsubscribe was requested
-    bumped: {}, // message key -> ts of the last bump; stands in for the date when ordering and fading
+    bumped: {}, // message key or topic key -> ts of the last bump; stands in for the date when ordering and fading
     orgColor: {}, // root domain -> palette index
   };
 }
@@ -409,38 +408,37 @@ export function buildModel(messages, state, { now = Date.now(), myAddrs = new Se
   return { senders, topics, threads, needsReply, attention, now };
 }
 
-/** Topics ordered by user priority, then by recency. */
-export function orderTopics(topics, order) {
-  const rank = new Map(order.map((k, i) => [k, i]));
-  return [...topics].sort((a, b) => {
-    const ra = rank.has(a.key) ? rank.get(a.key) : Infinity;
-    const rb = rank.has(b.key) ? rank.get(b.key) : Infinity;
-    if (ra !== rb) return ra - rb;
-    return b.lastTs - a.lastTs;
-  });
-}
-
 /**
- * Drag `key` so it sits before/after `targetKey` in the `visible` list.
- * The dragged topic, and everything now above it, becomes part of the pinned priority order;
- * topics below stay unpinned and keep floating by recency. Pinned topics that are not
- * currently visible keep their place relative to their pinned neighbours.
+ * The Notifications list: topics with mail in the window, most recent first.
+ * Like messages in the other sections, a topic's effective date is its newest email or its last
+ * bump, whichever is later, so a bumped topic rises to the top and outlives the window.
+ * A dismissed topic stays away until newer mail arrives, and then shows only that mail.
+ *   user: persisted state (bumped, topicDismissed, flagged, acked); cut: window start (ms);
+ *   passes: optional message filter. Returns [{topic, msgs (newest first), flagged, eff}].
  */
-export function reorder(order, visible, key, targetKey, after) {
-  const vis = visible.filter((k) => k !== key);
-  let i = vis.indexOf(targetKey);
-  if (i < 0) i = vis.length; else if (after) i++;
-  vis.splice(i, 0, key);
-  const was = new Set(order);
-  let last = i;
-  vis.forEach((k, j) => { if (was.has(k) && j > last) last = j; });
-  const out = vis.slice(0, last + 1);
-  const pinnedVisible = new Set(out);
-  let anchor = null;
-  for (const k of order) {
-    if (pinnedVisible.has(k)) { anchor = k; continue; }
-    out.splice(anchor === null ? 0 : out.indexOf(anchor) + 1, 0, k);
-    anchor = k;
+export function topicRows(topics, user, { cut, passes = () => true }) {
+  const rows = [];
+  for (const t of topics) {
+    const dismissedAt = user.topicDismissed[t.key] || 0;
+    if (t.lastTs <= dismissedAt) continue;
+    const bumpedAt = user.bumped[t.key] || 0;
+    if (Math.max(t.lastTs, bumpedAt) < cut) continue;
+    const from = Math.max(cut, dismissedAt + 1);
+    const msgs = [];
+    let latest = null; // newest message that passes the filters, even if outside the window
+    for (let i = t.msgs.length - 1; i >= 0; i--) {
+      const m = t.msgs[i];
+      if (m.ts <= dismissedAt || (m.ts < from && latest)) break;
+      if (!passes(m)) continue;
+      latest ||= m;
+      if (m.ts >= from) msgs.push(m);
+    }
+    if (!latest) continue;
+    const eff = Math.max(latest.ts, bumpedAt);
+    if (eff < cut) continue;
+    if (!msgs.length) msgs.push(latest); // kept only by its bump: still show what it is about
+    const flagged = msgs.some((m) => user.flagged[m.key] || (m.reasons && !user.acked[m.key]));
+    rows.push({ topic: t, msgs, flagged, eff });
   }
-  return out;
+  return rows.sort((a, b) => b.eff - a.eff);
 }

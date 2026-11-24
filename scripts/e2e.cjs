@@ -241,19 +241,31 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.click('section[aria-label="Notifications"] .seg >> text=7d');
   });
 
-  await step('drag handle reorders topics and order persists', async () => {
+  await step('notifications are ordered by latest email; a topic can be bumped to the top', async () => {
+    const ages = () => page.$$eval('.topic > .row .age', (els) => els.map((e) => e.title));
+    const sorted = (list) => list.every((t, i) => i === 0 || new Date(list[i - 1]) >= new Date(t));
+    assert.ok(sorted(await ages()), 'newest first');
+    assert.equal(await page.locator('.handle').count(), 0, 'no drag handles');
     const before = await topicLabels();
-    const src = page.locator('.topic').nth(4).locator('.handle');
-    const dst = page.locator('.topic').nth(0);
-    await src.dragTo(dst, { targetPosition: { x: 200, y: 4 } });
-    const after = await topicLabels();
-    assert.equal(after[0], before[4], `moved to top: ${after[0]}`);
-    assert.equal(after[1], before[0]);
-    // keyboard alternative
-    await page.locator('.topic').nth(0).locator('.handle').focus();
-    await page.keyboard.press('Alt+ArrowDown');
-    const after2 = await topicLabels();
-    assert.equal(after2[1], before[4]);
+    const row = page.locator('.topic').nth(5).locator('> .row');
+    await row.hover(); await row.locator('text=Bump').click();
+    let after = await topicLabels();
+    assert.equal(after[0], before[5]);
+    assert.deepStrictEqual(after.slice(1, 6), before.slice(0, 5), 'the rest keep their order');
+    assert.equal(await page.locator('.topic').first().locator('.bumped').count(), 1);
+    // it stays when the window shrinks past its mail, and Undo puts it back
+    const top = after[0];
+    await page.click('[aria-label="Notifications period"] >> text=24h');
+    assert.equal((await topicLabels())[0], top);
+    await page.click('[aria-label="Notifications period"] >> text=7d');
+    await page.locator('.topic').first().locator('> .row').hover();
+    await page.locator('.topic').first().locator('> .row >> text=Bump').click();
+    await page.click('.toast >> text=Undo');
+    after = await topicLabels();
+    assert.equal(after[0], top, 'undo of a second bump keeps the first');
+    // the same row component everywhere: every home row ends with Bump then its dismiss action
+    const tails = await page.$$eval('.section .card > .row .row-actions, .section .card > .topic > .row .row-actions', (els) => els.map((el) => [...el.querySelectorAll('button')].slice(-2).map((b) => b.textContent)[0]));
+    assert.ok(tails.length > 10 && tails.every((t) => t === 'Bump'), tails.join(','));
   });
 
   await step('expand topic shows messages; flag escalates to Attention', async () => {
@@ -470,7 +482,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
       rebuild();
     });
     await slack().waitFor();
-    assert.equal((await slack().locator('.count').textContent()).trim(), '', 'only the new message is listed');
+    assert.equal(await slack().locator('.count').count(), 0, 'only the new message is listed');
     assert.match(await slack().locator('.age').textContent(), /now/);
     await page.click('section[aria-label="Notifications"] .seg >> text=7d');
   });

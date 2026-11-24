@@ -1,9 +1,9 @@
 import { html, render, useState, useMemo, useEffect, useRef, cx, ago, fullDate, displayName } from './util.mjs';
 import {
   S, api, init, set, useStore, passes, toggleIn, cutoffs, ageBand, accountOf, openMessage, closeReader,
-  markDone, undoDone, ack, bump, isUnread, dismissTopic, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
+  markDone, undoDone, ack, bump, bumpTargetFor, isUnread, dismissTopic, toggleFlag, toggleQuiet, toggleSenderTopic, setSenderKind, setSetting, mutate, toast,
 } from './store.mjs';
-import { DAY, orderTopics, reorder, baseSubject } from '../core/classify.mjs';
+import { DAY, baseSubject, topicRows } from '../core/classify.mjs';
 import { Compose, newDraft, startReply } from './compose.mjs';
 import { Reader } from './reader.mjs';
 import { Search } from './search.mjs';
@@ -119,27 +119,15 @@ function Sidebar() {
 }
 
 // ------------------------------------------------------------------ home rows
+//
+// Needs reply, Attention and Notifications are the same thing three times: a time-tabbed list of
+// rows, newest first by "effective date" (received, or last bumped), each row offering its own
+// actions, then Bump, then a way to dismiss it. They share Section and Row; only what a row
+// says, and what dismissing means, differs.
 
-function PersonRow({ m }) {
-  const band = ageBand(m.eff);
-  const bumped = S.user.bumped[m.key];
-  const { now } = cutoffs();
-  return html`
-    <div class=${cx('row', band, S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)} tabindex="0"
-      onKeyDown=${(e) => { if (e.key === 'Enter') openMessage(m); }}>
-      <${Avatar} addr=${m.from.addr} name=${m.from.name} acct=${m.acct} />
-      <span class="who">${displayName(m.from)}</span>
-      <span class="subj">${baseSubject(m.subject) || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span class="snip">— ${m.snippet}</span>`}</span>
-      <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
-        <button class="btn small" onClick=${() => startReply(m, 'reply')}>Reply</button>
-        <button class="btn small" title="Move to the top and keep it from fading (b)" onClick=${() => bump(m)}>Bump</button>
-        <button class="btn small" title="Remove from this list without replying"
-          onClick=${() => { markDone(m); toast('No reply needed', { action: 'Undo', onAction: () => { undoDone(m); set({ toast: null }); } }); }}>No reply needed</button>
-      </span>
-      ${isUnread(m) && html`<span class="unread" title="Unread"></span>`}
-      ${bumped && html`<span class="bumped" title=${`Bumped ${fullDate(bumped)}`}>↑</span>`}
-      <span class=${cx('age', (band !== 'fresh' || bumped) && now - m.ts > S.user.settings.nearDays * DAY && 'wait')} title=${fullDate(m.ts)}>${now - m.ts > S.user.settings.nearDays * DAY ? `waiting ${ago(m.ts, now)}` : ago(m.ts, now)}</span>
-    </div>`;
+/** `Org › channel › topic`, the organisation underlined in its colour. */
+function OrgPath({ root, org, channel, label, addr, grow }) {
+  return html`<span class="path" style=${grow ? { flex: 1 } : null} title=${addr}><${OrgChip} root=${root} org=${org} /><span class="sep">›</span>${channel}${label && html`<span class="sep">›</span>${label}`}</span>`;
 }
 
 function Path({ m }) {
@@ -147,15 +135,62 @@ function Path({ m }) {
   const t = m.topic && S.model.topics.get(m.topic);
   if (!s) return html`<span class="path">${m.from.addr}</span>`;
   if (s.kind !== 'channel') return html`<span class="path"><b>${displayName(m.from)}</b><span class="sep">·</span>${s.addr}</span>`;
-  return html`<span class="path" title=${s.addr}><${OrgChip} root=${s.root} org=${s.org} /><span class="sep">›</span>${s.channel}${t && html`<span class="sep">›</span>${t.label}`}</span>`;
+  return html`<${OrgPath} root=${s.root} org=${s.org} channel=${s.channel} label=${t?.label} addr=${s.addr} />`;
+}
+
+const Subject = ({ m, base }) => html`
+  <span class="subj">${(base ? baseSubject(m.subject) : m.subject) || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span class="snip">— ${m.snippet}</span>`}</span>`;
+
+/**
+ * One list row, for a message or a topic.
+ *   item     what Bump applies to: anything with a `key` (a message or a topic)
+ *   eff, ts  effective date (drives fading) and real date (what the age shows)
+ *   avatar   {addr, name, acct}
+ *   actions  buttons specific to this kind of row; Bump and `dismiss` {label, title, onClick} follow them
+ */
+function Row({ item, eff, ts, avatar, children, actions, dismiss, onOpen, selected, unread, flagged, count, fresh, waiting }) {
+  const bumpedAt = S.user.bumped[item.key];
+  const { now } = cutoffs();
+  const band = fresh ? 'fresh' : ageBand(eff);
+  const overdue = waiting && now - ts > S.user.settings.nearDays * DAY;
+  return html`
+    <div class=${cx('row', band, selected && 'sel')} onClick=${onOpen} tabindex="0" onKeyDown=${(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) onOpen(); }}>
+      <${Avatar} ...${avatar} />
+      ${children}
+      <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
+        ${actions}
+        <button class="btn small" title="Move to the top and keep it from fading (b)" onClick=${() => bump(item)}>Bump</button>
+        <button class="btn small" title=${dismiss.title} onClick=${dismiss.onClick}>${dismiss.label}</button>
+      </span>
+      ${unread && html`<span class="unread" title="Unread"></span>`}
+      ${flagged && html`<i class="flagdot" title="Has mail flagged for attention"></i>`}
+      ${bumpedAt && html`<span class="bumped" title=${`Bumped ${fullDate(bumpedAt)}`}>↑</span>`}
+      ${count > 1 && html`<span class="count">×${count}</span>`}
+      <span class=${cx('age', overdue && 'wait')} title=${fullDate(ts)}>${overdue ? `waiting ${ago(ts, now)}` : ago(ts, now)}</span>
+    </div>`;
+}
+
+const undoable = (text, undo) => toast(text, { action: 'Undo', onAction: () => { undo(); set({ toast: null }); } });
+const avatarOf = (m) => ({ addr: m.from.addr, name: m.from.name, acct: m.acct });
+
+function PersonRow({ m }) {
+  return html`
+    <${Row} item=${m} eff=${m.eff} ts=${m.ts} avatar=${avatarOf(m)} onOpen=${() => openMessage(m)} selected=${S.open?.key === m.key} unread=${isUnread(m)} waiting
+      actions=${html`<button class="btn small" onClick=${() => startReply(m, 'reply')}>Reply</button>`}
+      dismiss=${{ label: 'No reply needed', title: 'Remove from this list without replying', onClick: () => { markDone(m); undoable('No reply needed', () => undoDone(m)); } }}>
+      <span class="who">${displayName(m.from)}</span>
+      <${Subject} m=${m} base />
+    <//>`;
 }
 
 function AttentionRow({ m }) {
   const flagged = !!S.user.flagged[m.key];
   return html`
-    <div class=${cx('row', ageBand(m.eff) === 'fresh' || flagged ? 'fresh' : 'fading', S.open?.key === m.key && 'sel')} onClick=${() => openMessage(m)} tabindex="0"
-      onKeyDown=${(e) => { if (e.key === 'Enter') openMessage(m); }}>
-      <${Avatar} addr=${m.from.addr} name=${m.from.name} acct=${m.acct} />
+    <${Row} item=${m} eff=${m.eff} ts=${m.ts} avatar=${avatarOf(m)} onOpen=${() => openMessage(m)} selected=${S.open?.key === m.key} unread=${isUnread(m)} fresh=${flagged}
+      actions=${html`
+        ${m.kind === 'new' && html`<button class="btn small" title="Treat this sender as an important person" onClick=${() => setSenderKind(m.from.addr, 'important')}>Important</button>`}
+        ${m.topic && !flagged && html`<button class="btn small" title="Stop flagging this topic" onClick=${() => { toggleQuiet(m.topic); undoable('This topic will not be flagged again', () => toggleQuiet(m.topic)); }}>Never flag topic</button>`}`}
+      dismiss=${{ label: flagged ? 'Unflag' : 'Dismiss', title: 'Remove from Attention', onClick: () => ack(m) }}>
       <div class="attn-main">
         <div class="l1">
           ${m.reasons.map((r) => html`<span class=${cx('reason', r.type === 'keyword' && 'kw')}>${r.text}</span>`)}
@@ -163,96 +198,41 @@ function AttentionRow({ m }) {
         </div>
         <div class="l2"><${Path} m=${m} /></div>
       </div>
-      <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
-        ${m.kind === 'new' && html`<button class="btn small" title="Treat this sender as an important person" onClick=${() => setSenderKind(m.from.addr, 'important')}>Important</button>`}
-        ${m.topic && !flagged && html`<button class="btn small" title="Stop flagging this topic" onClick=${() => { toggleQuiet(m.topic); toast('This topic will not be flagged again', { action: 'Undo', onAction: () => { toggleQuiet(m.topic); set({ toast: null }); } }); }}>Never flag topic</button>`}
-        <button class="btn small" title="Move to the top and keep it from fading (b)" onClick=${() => bump(m)}>Bump</button>
-        <button class="btn small" onClick=${() => ack(m)}>${flagged ? 'Unflag' : 'Dismiss'}</button>
-      </span>
-      ${isUnread(m) && html`<span class="unread" title="Unread"></span>`}
-      ${S.user.bumped[m.key] && html`<span class="bumped" title=${`Bumped ${fullDate(S.user.bumped[m.key])}`}>↑</span>`}
-      <span class="age" title=${fullDate(m.ts)}>${ago(m.ts, cutoffs().now)}</span>
-    </div>`;
+    <//>`;
 }
 
-// ------------------------------------------------------------------ topics
-
-function TopicList({ rows }) {
-  const [dragKey, setDragKey] = useState(null);
-  const [over, setOver] = useState(null); // {key, after}
-  const keys = rows.map((r) => r.topic.key);
-  const ranked = new Set(S.user.topicOrder);
-  const move = (key, target, after) => {
-    if (!target || key === target) return;
-    mutate((u) => { u.topicOrder = reorder(u.topicOrder, keys, key, target, after); });
-  };
-  const end = () => { setDragKey(null); setOver(null); };
-
-  return rows.map(({ topic: t, msgs, flagged }, i) => {
-    const open = S.expanded.has(t.key);
-    const latest = msgs[0];
-    return html`
-      <div key=${t.key} data-topic=${t.key}
-        class=${cx('topic', dragKey === t.key && 'dragging', over?.key === t.key && dragKey !== t.key && (over.after ? 'drop-after' : 'drop-before'))}
-        onDragOver=${(e) => {
-          if (!dragKey) return;
-          e.preventDefault();
-          const r = e.currentTarget.getBoundingClientRect();
-          const after = e.clientY > r.top + r.height / 2;
-          if (over?.key !== t.key || over.after !== after) setOver({ key: t.key, after });
-        }}
-        onDrop=${(e) => { e.preventDefault(); if (dragKey && over) move(dragKey, over.key, over.after); end(); }}>
-        <div class=${cx('row', ageBand(latest.ts))} onClick=${() => toggleIn('expanded', t.key)}>
-          <span class="handle" draggable="true" tabindex="0" role="button" aria-label=${`Reorder ${t.org} ${t.channel} ${t.label}. Use Alt+Up or Alt+Down.`}
-            title="Drag to set priority (Alt+↑/↓)"
-            onClick=${(e) => e.stopPropagation()}
-            onDragStart=${(e) => {
-              e.dataTransfer.effectAllowed = 'move';
-              e.dataTransfer.setData('text/plain', t.key);
-              const row = e.currentTarget.closest('.topic');
-              if (row) e.dataTransfer.setDragImage(row, 12, 14);
-              setDragKey(t.key);
-            }}
-            onDragEnd=${end}
-            onKeyDown=${(e) => {
-              if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
-              e.preventDefault();
-              const up = e.key === 'ArrowUp';
-              move(t.key, keys[i + (up ? -1 : 1)], !up);
-            }}>⠿</span>
-          <${Avatar} addr=${t.addr} acct=${latest.acct} />
-          <span class="path" style=${{ flex: 1 }} title=${t.addr}><${OrgChip} root=${t.root} org=${t.org} /><span class="sep">›</span>${t.channel}<span class="sep">›</span>${t.label}</span>
-          <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
-            <button class="btn small" title="Hide this topic until a new email arrives on it" onClick=${() => dismissTopic(t)}>Dismiss</button>
-          </span>
-          ${flagged && html`<i class="flagdot" title="Has mail flagged for attention"></i>`}
-          ${ranked.has(t.key) && html`<span class="pinned" title="In your priority order">●</span>`}
-          <span class="count">${msgs.length > 1 ? `×${msgs.length}` : ''}</span>
-          <span class="age" title=${fullDate(latest.ts)}>${ago(latest.ts, cutoffs().now)}</span>
-        </div>
-        ${open && html`
-          <div class="topic-body">
-            <div class="topic-tools" onClick=${(e) => e.stopPropagation()}>
-              <button class="btn small" title=${`Group everything from ${t.addr} as one topic, whatever the subject`}
-                onClick=${() => { const key = `${t.addr}|*`; const on = !S.user.senderTopic[t.addr]; toggleSenderTopic(t.addr); if (on) set({ expanded: new Set([...S.expanded].filter((k) => !k.startsWith(`${t.addr}|`)).concat(key)) }); }}>
-                ${S.user.senderTopic[t.addr] ? 'Split this sender by subject' : 'One topic for this sender'}</button>
-              ${!S.user.senderTopic[t.addr] && html`<button class="btn small" onClick=${() => set({ ruleEditor: { topic: t } })}>Define topic by pattern…</button>`}
-              <button class="btn small" onClick=${() => toggleQuiet(t.key)}>${S.user.quietTopics[t.key] ? 'Flag this topic again' : 'Never flag this topic'}</button>
-              <button class="btn small" onClick=${() => setSenderKind(t.addr, 'important')} title=${`Treat ${t.addr} as a person you need to answer`}>Sender is important</button>
-              ${ranked.has(t.key) && html`<button class="btn small" onClick=${() => mutate((u) => { u.topicOrder = u.topicOrder.filter((k) => k !== t.key); })}>Remove from priority order</button>`}
-            </div>
-            ${msgs.slice(0, 40).map((m) => html`
-              <div class=${cx('row', ageBand(m.ts), S.open?.key === m.key && 'sel')} key=${m.key} onClick=${() => openMessage(m)}>
-                <span class="subj">${m.subject || '(no subject)'} ${m.snippet && m.snippet !== m.subject && html`<span class="snip">— ${m.snippet}</span>`}</span>
-                <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
-                  <button class="btn small" onClick=${() => toggleFlag(m)}>${S.user.flagged[m.key] ? 'Unflag' : 'Flag'}</button>
-                </span>
-                <span class="age" title=${fullDate(m.ts)}>${ago(m.ts, cutoffs().now)}</span>
-              </div>`)}
-            ${msgs.length > 40 && html`<div class="empty">${msgs.length - 40} more in this period — use Search to see them all.</div>`}
-          </div>`}
-      </div>`;
-  });
+/** A notification topic: a row like the others, which unfolds to the topic's recent mail. */
+function TopicRow({ row: { topic: t, msgs, flagged, eff } }) {
+  const open = S.expanded.has(t.key);
+  const latest = msgs[0];
+  const single = !!S.user.senderTopic[t.addr];
+  return html`
+    <div class="topic" data-topic=${t.key}>
+      <${Row} item=${t} eff=${eff} ts=${latest.ts} avatar=${{ addr: t.addr, acct: latest.acct }} onOpen=${() => toggleIn('expanded', t.key)} flagged=${flagged} count=${msgs.length}
+        dismiss=${{ label: 'Dismiss', title: 'Hide this topic until a new email arrives on it', onClick: () => dismissTopic(t) }}>
+        <${OrgPath} root=${t.root} org=${t.org} channel=${t.channel} label=${t.label} addr=${t.addr} grow />
+      <//>
+      ${open && html`
+        <div class="topic-body">
+          <div class="topic-tools">
+            <button class="btn small" title=${`Group everything from ${t.addr} as one topic, whatever the subject`}
+              onClick=${() => { toggleSenderTopic(t.addr); if (!single) set({ expanded: new Set([...S.expanded].filter((k) => !k.startsWith(`${t.addr}|`)).concat(`${t.addr}|*`)) }); }}>
+              ${single ? 'Split this sender by subject' : 'One topic for this sender'}</button>
+            ${!single && html`<button class="btn small" onClick=${() => set({ ruleEditor: { topic: t } })}>Define topic by pattern…</button>`}
+            <button class="btn small" onClick=${() => toggleQuiet(t.key)}>${S.user.quietTopics[t.key] ? 'Flag this topic again' : 'Never flag this topic'}</button>
+            <button class="btn small" onClick=${() => setSenderKind(t.addr, 'important')} title=${`Treat ${t.addr} as a person you need to answer`}>Sender is important</button>
+          </div>
+          ${msgs.slice(0, 40).map((m) => html`
+            <div class=${cx('row', ageBand(m.ts), S.open?.key === m.key && 'sel')} key=${m.key} onClick=${() => openMessage(m)}>
+              <${Subject} m=${m} />
+              <span class="row-actions" onClick=${(e) => e.stopPropagation()}>
+                <button class="btn small" onClick=${() => toggleFlag(m)}>${S.user.flagged[m.key] ? 'Unflag' : 'Flag'}</button>
+              </span>
+              <span class="age" title=${fullDate(m.ts)}>${ago(m.ts, cutoffs().now)}</span>
+            </div>`)}
+          ${msgs.length > 40 && html`<div class="empty">${msgs.length - 40} more in this period — use Search to see them all.</div>`}
+        </div>`}
+    </div>`;
 }
 
 // ------------------------------------------------------------------ home
@@ -266,6 +246,18 @@ function PeriodTabs({ k, label }) {
     </span>`;
 }
 const periodLabel = (days) => PERIODS.find(([d]) => d === days)?.[1] || `${days}d`;
+
+/** A home section: heading, hint, optional tools, its own time tabs, and a card of rows. */
+function Section({ label, hint, periodKey, tools, attn, children }) {
+  return html`
+    <section class="section" aria-label=${label}>
+      <div class="section-h"><h2>${label}</h2><span class="hint">${hint}</span>
+        ${tools}
+        <${PeriodTabs} k=${periodKey} label=${label} />
+      </div>
+      <div class=${cx('card', attn && 'attn')}>${children}</div>
+    </section>`;
+}
 
 function ActiveFilters() {
   const { tagSel, acctSel, model } = S;
@@ -290,74 +282,41 @@ function Home() {
   const { model, user } = S;
   const [showOld, setShowOld] = useState(false);
   const [attnAll, setAttnAll] = useState(false);
-  const c = cutoffs();
-  const period = user.settings.period;
+  const { now } = cutoffs();
+  const st = user.settings;
+  const since = (days) => now - days * DAY;
 
   const needs = model.needsReply.filter(passes);
-  const needsCut = c.now - user.settings.needsPeriod * DAY;
-  const needsCurrent = needs.filter((m) => m.eff >= needsCut);
-  const needsOld = needs.filter((m) => m.eff < needsCut);
+  const needsCurrent = needs.filter((m) => m.eff >= since(st.needsPeriod));
+  const needsOld = needs.filter((m) => m.eff < since(st.needsPeriod));
   const attention = model.attention.filter(passes);
-
-  const rows = useMemo(() => {
-    const cut = c.now - period * DAY;
-    const out = [];
-    for (const t of model.topics.values()) {
-      // A dismissed topic stays away until newer mail arrives, and then shows only that.
-      const since = Math.max(cut, (user.topicDismissed[t.key] || 0) + 1);
-      if (t.lastTs < since) continue;
-      const msgs = [];
-      let flagged = false;
-      for (let i = t.msgs.length - 1; i >= 0 && t.msgs[i].ts >= since; i--) {
-        const m = t.msgs[i];
-        if (!passes(m)) continue;
-        msgs.push(m);
-        if (user.flagged[m.key] || (m.reasons && !user.acked[m.key])) flagged = true;
-      }
-      if (msgs.length) out.push({ topic: { ...t, lastTs: msgs[0].ts }, msgs, flagged });
-    }
-    const order = orderTopics(out.map((r) => r.topic), user.topicOrder);
-    const byKey = new Map(out.map((r) => [r.topic.key, r]));
-    return order.map((t) => byKey.get(t.key));
-  }, [model, period, S.acctSel, S.tagSel, user.topicDismissed]);
+  const topics = useMemo(
+    () => topicRows(model.topics.values(), user, { cut: since(st.period), passes }),
+    [model, st.period, S.acctSel, S.tagSel, user.topicDismissed, user.bumped],
+  );
 
   const attnShown = attnAll ? attention : attention.slice(0, 8);
   return html`
     <div class="main-inner">
       <${ActiveFilters} />
-      <section class="section" aria-label="Needs reply">
-        <div class="section-h"><h2>Needs reply</h2><span class="hint">People you write to, waiting to hear from you</span>
-          <${PeriodTabs} k="needsPeriod" label="Needs reply" />
-        </div>
-        <div class="card">
-          ${needsCurrent.map((m) => html`<${PersonRow} key=${m.key} m=${m} />`)}
-          ${needsCurrent.length === 0 && html`<div class="empty">${needsOld.length ? 'Nobody new is waiting on you in this period.' : 'Nobody is waiting on you.'}</div>`}
-          ${showOld && needsOld.map((m) => html`<${PersonRow} key=${m.key} m=${m} />`)}
-          ${needsOld.length > 0 && html`<button class="more" onClick=${() => setShowOld(!showOld)}>${showOld ? 'Hide' : 'Show'} older than ${periodLabel(user.settings.needsPeriod)}</button>`}
-        </div>
-      </section>
+      <${Section} label="Needs reply" hint="People you write to, waiting to hear from you" periodKey="needsPeriod">
+        ${needsCurrent.map((m) => html`<${PersonRow} key=${m.key} m=${m} />`)}
+        ${needsCurrent.length === 0 && html`<div class="empty">${needsOld.length ? 'Nobody new is waiting on you in this period.' : 'Nobody is waiting on you.'}</div>`}
+        ${showOld && needsOld.map((m) => html`<${PersonRow} key=${m.key} m=${m} />`)}
+        ${needsOld.length > 0 && html`<button class="more" onClick=${() => setShowOld(!showOld)}>${showOld ? 'Hide' : 'Show'} older than ${periodLabel(st.needsPeriod)}</button>`}
+      <//>
 
-      <section class="section" aria-label="Attention">
-        <div class="section-h"><h2>Attention</h2><span class="hint">Out of the ordinary: new or rare topics, alarm words, unfamiliar senders, and anything you flag</span>
-          ${attention.length > 1 && html`<button class="btn ghost small" onClick=${() => { const list = attention.filter((m) => !user.flagged[m.key]); mutate((u) => { for (const m of list) u.acked[m.key] = true; }); }}>Dismiss all</button>`}
-          <${PeriodTabs} k="attnPeriod" label="Attention" />
-        </div>
-        <div class="card attn">
-          ${attnShown.map((m) => html`<${AttentionRow} key=${m.key} m=${m} />`)}
-          ${attention.length === 0 && html`<div class="empty">Nothing unusual in this period.</div>`}
-          ${attention.length > 8 && html`<button class="more" onClick=${() => setAttnAll(!attnAll)}>${attnAll ? 'Show fewer' : 'Show all'}</button>`}
-        </div>
-      </section>
+      <${Section} label="Attention" hint="Out of the ordinary: new or rare topics, alarm words, unfamiliar senders, and anything you flag" periodKey="attnPeriod" attn
+        tools=${attention.length > 1 && html`<button class="btn ghost small" onClick=${() => { const list = attention.filter((m) => !user.flagged[m.key]); mutate((u) => { for (const m of list) u.acked[m.key] = true; }); }}>Dismiss all</button>`}>
+        ${attnShown.map((m) => html`<${AttentionRow} key=${m.key} m=${m} />`)}
+        ${attention.length === 0 && html`<div class="empty">Nothing unusual in this period.</div>`}
+        ${attention.length > 8 && html`<button class="more" onClick=${() => setAttnAll(!attnAll)}>${attnAll ? 'Show fewer' : 'Show all'}</button>`}
+      <//>
 
-      <section class="section" aria-label="Notifications">
-        <div class="section-h"><h2>Notifications</h2><span class="hint">By topic, in your priority order. Nothing here needs action.</span>
-          <${PeriodTabs} k="period" label="Notifications" />
-        </div>
-        <div class="card">
-          <${TopicList} rows=${rows} />
-          ${rows.length === 0 && html`<div class="empty">No notifications in this period.</div>`}
-        </div>
-      </section>
+      <${Section} label="Notifications" hint="By topic, most recent first. Nothing here needs action." periodKey="period">
+        ${topics.map((row) => html`<${TopicRow} key=${row.topic.key} row=${row} />`)}
+        ${topics.length === 0 && html`<div class="empty">No notifications in this period.</div>`}
+      <//>
     </div>`;
 }
 
@@ -392,9 +351,7 @@ function onGlobalKey(e) {
     a: () => target && startReply(target, 'replyAll'),
     f: () => target && startReply(target, 'forward'),
     b: () => {
-      if (!target) return;
-      const waiting = S.model.needsReply.find((m) => m.acct === S.open.acct && m.threadId === S.open.threadId);
-      const item = waiting || (S.model.attention.includes(target) ? target : null);
+      const item = bumpTargetFor(target);
       if (item) bump(item);
     },
     e: () => {
