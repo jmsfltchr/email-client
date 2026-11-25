@@ -51,6 +51,8 @@ export function defaultState() {
     unsubscribed: {}, // sender addr -> ts an unsubscribe was requested
     bumped: {}, // message key or topic key -> ts of the last bump; stands in for the date when ordering and fading
     orgColor: {}, // root domain -> palette index
+    chatNotes: [], // notifications from the Testers browser: waiting ones, then archived (see notes.mjs)
+    chatNotesOpen: true, // the notifications pane is expanded
   };
 }
 

@@ -104,7 +104,7 @@ function Sidebar() {
       <div class="nav">
         ${nav('home', 'Focus', 'g')}
         ${nav('search', 'Search', '/')}
-        ${nav('testers', 'Testers', 't')}
+        ${nav('testers', html`Testers${(S.user.chatNotes || []).some((n) => !n.done) && html`<i class="dot note-dot" title="Messages waiting in the Testers browser"></i>`}`, 't')}
         ${nav('settings', 'Settings', ',')}
       </div>
       ${accounts.length > 0 && html`

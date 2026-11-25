@@ -1,11 +1,12 @@
 // Testers tab: the people you are talking to during a test programme, kept in one Notion database,
 // with each person's conversations (Instagram, Discord, Slack, Teams, email) one click away.
 
-import { html, useState, useEffect, cx } from './util.mjs';
-import { S, api, set, toast, openMessage, closeReader } from './store.mjs';
+import { html, useState, useEffect, cx, ago } from './util.mjs';
+import { S, api, set, toast, openMessage, closeReader, notify, saveSoon } from './store.mjs';
 import { newDraft } from './compose.mjs';
 import { Browser } from './webpane.mjs';
 import { PLATFORMS, linkFromInput, conversationOf, nameFromTitle } from '../core/notion.mjs';
+import { addNote, archiveNote, clearArchive, linkForNote } from '../core/notes.mjs';
 
 const CHAT_PARTITION = 'persist:stillmail-chat'; // sign-ins for the messaging sites; separate from links opened from email
 const NOTION_COLORS = { default: '#878a8f', gray: '#9a9da3', brown: '#b98f6f', orange: '#e79a4f', yellow: '#e3c24f', green: '#6fc79a', blue: '#6aa8ee', purple: '#a98be6', pink: '#e68bc0', red: '#ec7a72' };
@@ -150,6 +151,81 @@ export function onLocation(platform, { url, title }) {
 }
 
 const pick = (id) => T({ sel: id, dismissed: S.testers.here?.key ?? null });
+
+// ------------------------------------------------------------------ notifications from the browser
+
+const panes = {}; // platform -> its <webview>, while that page is loaded
+const setNotes = (notes) => { S.user.chatNotes = notes; saveSoon(); notify(); };
+
+/** A messaging page raised a notification: it joins the list of people to answer. */
+export function onNote(platform, raw) {
+  if (!raw || !raw.id || !PLATFORMS[platform]) return;
+  const note = { id: String(raw.id), platform, title: String(raw.title || '').trim() || PLATFORMS[platform].name, body: String(raw.body || '').trim(), tag: String(raw.tag || ''), ts: Date.now() };
+  setNotes(addNote(S.user.chatNotes, note));
+  // Away from the Testers tab (or the app), say so the way new mail does.
+  if (!S.user.settings.notify || typeof Notification === 'undefined' || (document.hasFocus() && S.view === 'testers')) return;
+  try {
+    const n = new Notification(`${PLATFORMS[platform].name} · ${note.title}`, { body: note.body, tag: note.id });
+    n.onclick = () => { api.focusWindow?.(); openNote(note); };
+  } catch { /* notifications unavailable */ }
+}
+
+/** Archive a note and go to what it is about. */
+export async function openNote(note) {
+  setNotes(archiveNote(S.user.chatNotes, note.id));
+  if (S.view !== 'testers') set({ view: 'testers' });
+  if (!S.canEmbed) return;
+  if (S.open) closeReader();
+  const loaded = !!S.testers.chats[note.platform];
+  if (loaded) {
+    showChat(note.platform);
+    // Click the notification inside its page: the site opens the conversation, and the details follow.
+    let clicked = false;
+    try { clicked = await panes[note.platform]?.executeJavaScript(`(window[Symbol.for('stillmail.notifications')]?.click(${JSON.stringify(note.id)})) || false`, true); } catch { /* page not ready */ }
+    if (clicked) return;
+  }
+  // The page has been reloaded or closed since: find the conversation by the person's name, else show the inbox.
+  const hit = linkForNote(note, S.testers.rows);
+  if (hit) { pick(hit.row.id); openConversation(hit.link); } else if (!loaded && INBOX[note.platform]) openInbox(note.platform);
+}
+
+function Notes() {
+  const all = S.user.chatNotes || [];
+  const waiting = all.filter((n) => !n.done);
+  const archived = all.filter((n) => n.done);
+  const toggle = () => { S.user.chatNotesOpen = S.user.chatNotesOpen === false; saveSoon(); notify(); };
+  if (S.user.chatNotesOpen === false) {
+    return html`
+      <aside class="t-notes rail" aria-label="Notifications">
+        <button onClick=${toggle} title="Show notifications" aria-label=${`Show notifications (${waiting.length} waiting)`}>
+          <span>‹</span>${waiting.length > 0 && html`<b class="n">${waiting.length}</b>`}<span class="v">Notifications</span>
+        </button>
+      </aside>`;
+  }
+  const item = (n) => html`
+    <div class=${cx('note', n.done && 'done')} key=${n.id} role="button" tabindex="0" title=${n.done ? 'Open again' : 'Open the conversation and archive this'}
+      onClick=${() => openNote(n)} onKeyDown=${(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) openNote(n); }}>
+      <${Badge} platform=${n.platform} />
+      <div class="txt"><b>${n.title}</b>${n.body && html`<span>${n.body}</span>`}</div>
+      <span class="age">${ago(n.ts)}</span>
+      ${!n.done && html`<button class="btn ghost small" aria-label="Archive without opening" title="Archive without opening" onClick=${(e) => { e.stopPropagation(); setNotes(archiveNote(S.user.chatNotes, n.id)); }}>✓</button>`}
+    </div>`;
+  return html`
+    <aside class="t-notes" aria-label="Notifications">
+      <div class="t-notes-h"><span>To answer${waiting.length > 0 && html` <b class="n">${waiting.length}</b>`}</span>
+        <button class="btn ghost small" onClick=${toggle} title="Collapse" aria-label="Collapse notifications">›</button></div>
+      <div class="t-notes-body">
+        ${waiting.map(item)}
+        ${waiting.length === 0 && html`<div class="empty">Nobody is waiting. Messages that arrive in a browser tab you have opened are listed here.</div>`}
+      </div>
+      ${archived.length > 0 && html`
+        <details class="note-tray">
+          <summary>Archived <span class="ct">${archived.length}</span></summary>
+          <div class="t-notes-body">${archived.map(item)}</div>
+          <button class="more" onClick=${() => setNotes(clearArchive(S.user.chatNotes))}>Clear archive</button>
+        </details>`}
+    </aside>`;
+}
 
 // ------------------------------------------------------------------ small pieces
 
@@ -437,7 +513,7 @@ function Chats({ off }) {
             <div class="picks">${Object.keys(INBOX).map((p) => html`<button class="btn" key=${p} onClick=${(e) => openInbox(p, e)}><${Badge} platform=${p} />${PLATFORMS[p].name}</button>`)}</div>
             <p>Open a conversation there and its person shows beside it, or you are offered to add them.</p>
           </div>`}
-        ${open.map((p) => html`<${Browser} key=${p} url=${chats[p].url} n=${chats[p].n} partition=${CHAT_PARTITION} off=${p !== active} onLocation=${(loc) => onLocation(p, loc)} label=${`${PLATFORMS[p].name} conversation`} onClose=${() => closeChat(p)} />`)}
+        ${open.map((p) => html`<${Browser} key=${p} url=${chats[p].url} n=${chats[p].n} partition=${CHAT_PARTITION} off=${p !== active} onLocation=${(loc) => onLocation(p, loc)} onMessage=${(channel, args) => { if (channel === 'stillmail-notification') onNote(p, args[0]); }} onView=${(wv) => { if (wv) panes[p] = wv; else delete panes[p]; }} label=${`${PLATFORMS[p].name} conversation`} onClose=${() => closeChat(p)} />`)}
       </div>
     </div>`;
 }
@@ -465,5 +541,6 @@ export function Testers({ shown }) {
         : t.status.connected && !t.connecting ? html`<div class="empty">${t.error ? html`${t.error} <button class="btn small" onClick=${() => loadTesters()}>Try again</button> <button class="btn small" onClick=${() => T({ connecting: true })}>Connection…</button>` : 'Loading from Notion…'}</div>`
         : html`<div class="main" style=${{ flex: 1 }}><${Connection} /></div>`}
       ${(chatting || Object.keys(t.chats).length > 0) && html`<${Chats} off=${!shown || !!S.open || !chatting} />`}
+      ${ready && html`<${Notes} />`}
     </main>`;
 }

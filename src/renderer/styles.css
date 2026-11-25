@@ -292,15 +292,40 @@ a { color: var(--accent); }
 .t-connect { margin-top: 4vh; }
 .t-connect label { width: 170px; }
 /* a conversation is open: the list and details step aside */
-.testers.chatting .t-people { flex: 0 0 270px; padding: 18px 12px 14px; }
+.testers.chatting .t-people { flex: 0 0 250px; padding: 18px 12px 14px; }
 .testers.chatting .t-people .hint, .testers.chatting .t-rowtags { display: none; }
 .testers.chatting .t-tools { flex-wrap: wrap; }
 .testers.chatting .t-tools .input:first-child { flex-basis: 100%; }
 .testers.chatting .t-list .who { flex: 1; }
-.testers.chatting .t-detail { flex-basis: 320px; }
+.testers.chatting .t-detail { flex-basis: 300px; }
 .testers.wide .t-people, .testers.wide .t-detail { display: none; }
 .reading .testers .t-detail { flex-basis: 320px; }
 .reading .testers .t-rowtags { display: none; }
+/* notifications from the browser tabs: a list of people to answer */
+.t-notes { flex: 0 0 236px; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--sunken); }
+.t-notes-h { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 8px 14px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+.t-notes .n { display: inline-block; min-width: 17px; text-align: center; background: var(--warn); color: #14161a; border-radius: 9px; padding: 0 5px; font: 700 10.5px/1.6 var(--sans); letter-spacing: 0; }
+.t-notes > .t-notes-body { flex: 1; min-height: 0; }
+.t-notes-body { overflow-y: auto; padding: 0 8px; display: flex; flex-direction: column; gap: 5px; }
+.note { display: flex; align-items: flex-start; gap: 7px; padding: 7px 6px 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; flex: none; }
+.note:hover { border-color: var(--muted); }
+.note .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.note .txt b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.note .txt span { color: var(--ink-2); font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.note .age { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.note .btn { padding: 0 5px; }
+.note.done { background: transparent; opacity: .7; }
+.note-tray { border-top: 1px solid var(--line); max-height: 45%; display: flex; flex-direction: column; }
+.note-tray[open] { overflow-y: auto; }
+.note-tray summary { cursor: pointer; padding: 8px 14px; font-size: 12px; color: var(--muted); }
+.note-tray .ct { font-variant-numeric: tabular-nums; }
+.note-tray .more { margin-top: 6px; }
+.t-notes.rail { flex-basis: 34px; }
+.t-notes.rail button { flex: 1; border: 0; background: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; }
+.t-notes.rail button:hover { color: var(--ink); background: var(--surface); }
+.t-notes.rail .v { writing-mode: vertical-rl; font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; }
+.reading .t-notes { display: none; }
+.note-dot { background: var(--warn); margin-left: 2px; }
 .chat-stack { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
 .chat-stack.off { position: absolute; width: 0; height: 0; overflow: hidden; visibility: hidden; border: 0; }
 .chat-tabs { display: flex; gap: 4px; align-items: center; padding: 6px 10px 0; background: var(--surface); }
@@ -310,6 +335,14 @@ a { color: var(--accent); }
 /* a service that has not been opened yet: present, but nothing is loaded */
 .chat-tab.idle .plat { background: none; border-style: dashed; opacity: .75; }
 .chat-tabs .sp { flex: 1; }
+/* little room: only the tab in front keeps its name */
+.chat-stack { container-type: inline-size; }
+@container (max-width: 640px) {
+  .chat-tab { padding: 4px 6px; }
+  .chat-tab:not(.on) { font-size: 0; gap: 0; }
+  .web-bar .ext { font-size: 0; }
+  .web-bar .ext::before { content: '↗'; font-size: 13px; }
+}
 .chat-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--ink-2); background: var(--sunken); text-align: center; padding: 24px; }
 .chat-empty p { margin: 0; max-width: 44ch; }
 .chat-empty .picks { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
