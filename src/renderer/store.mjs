@@ -77,7 +77,7 @@ function rebuildSoon() {
 }
 
 let saveTimer = null;
-function saveSoon() {
+export function saveSoon() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => api.saveState(S.user), 300);
 }

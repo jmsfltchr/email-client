@@ -20,14 +20,18 @@ export function WebPane() {
 }
 
 /** A web page with navigation controls. `n` changes whenever the caller wants `url` loaded afresh; `off` hides it without unloading. */
-export function Browser({ url, n, partition, onClose, onLocation, off = false, label = 'Web page' }) {
+export function Browser({ url, n, partition, onClose, onLocation, onMessage, onView, off = false, label = 'Web page' }) {
   const web = { url, n };
   const view = useRef();
   const [st, setSt] = useState({ url: web.url, title: '', loading: true, back: false, forward: false, error: null });
 
+  const owner = useRef();
+  owner.current = { onMessage, onView };
+
   // Wire the <webview> once.
   useEffect(() => {
     const wv = view.current;
+    owner.current.onView?.(wv);
     const sync = (patch = {}) => setSt((s) => {
       let nav = {};
       try { nav = { url: wv.getURL() || s.url, back: wv.canGoBack(), forward: wv.canGoForward() }; } catch { /* not attached yet */ }
@@ -39,10 +43,11 @@ export function Browser({ url, n, partition, onClose, onLocation, off = false, l
       'did-navigate': () => sync(),
       'did-navigate-in-page': () => sync(),
       'page-title-updated': (e) => sync({ title: e.title }),
+      'ipc-message': (e) => owner.current.onMessage?.(e.channel, e.args || []), // from our own script in a messaging page
       'did-fail-load': (e) => { if (e.isMainFrame && e.errorCode !== -3) sync({ loading: false, error: e.errorDescription || 'This page could not be loaded.' }); },
     };
     for (const [name, fn] of Object.entries(on)) wv.addEventListener(name, fn);
-    return () => { for (const [name, fn] of Object.entries(on)) wv.removeEventListener(name, fn); };
+    return () => { for (const [name, fn] of Object.entries(on)) wv.removeEventListener(name, fn); owner.current.onView?.(null); };
   }, []);
 
   // Every link click navigates the same pane.
@@ -80,7 +85,7 @@ export function Browser({ url, n, partition, onClose, onLocation, off = false, l
             ${st.title && html`<span class="web-title"> — ${st.title}</span>`}</span>
           <span class="raw"><span class="addr">${st.url}</span><span class="copy">${copied ? '✓ Copied' : '⧉ Copy'}</span></span>
         </button>
-        <button class="btn small" onClick=${() => api.openExternal(st.url)} title="Open this page in your default browser. Tip: ⌘-click (Ctrl-click) a link to go straight there.">Open in default browser</button>
+        <button class="btn small ext" onClick=${() => api.openExternal(st.url)} title="Open this page in your default browser. Tip: ⌘-click (Ctrl-click) a link to go straight there.">Open in default browser</button>
         <button class="btn ghost small" onClick=${onClose} title=${`Close ${label.toLowerCase()}`} aria-label=${`Close ${label.toLowerCase()}`}>✕</button>
       </div>
       <div class=${cx('web-progress', st.loading && 'on')}></div>

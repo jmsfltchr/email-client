@@ -688,6 +688,72 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.click('[aria-label="Hide browser"]');
   });
 
+  await step('testers: notifications from a browser tab become a list to answer; clicking one opens its conversation', async () => {
+    // a stand-in messaging page: raises desktop notifications, and opens the thread when one is clicked
+    const server = require('http').createServer((req, res) => {
+      res.setHeader('Content-Type', 'text/html');
+      res.end(req.url.startsWith('/thread/') ? `<title>Thread ${decodeURIComponent(req.url.slice(8))}</title><h1>thread</h1>`
+        : `<title>starting</title><h1>inbox</h1><script>
+            window.raise = (title, body, tag) => { const n = new Notification(title, { body, tag }); n.onclick = () => { location.href = '/thread/' + encodeURIComponent(title); }; setTimeout(() => n.close(), 20); };
+            Notification.requestPermission().then((p) => { document.title = 'permission ' + p + ' ' + Notification.permission; });
+          </script>`);
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const inPage = (code) => page.evaluate((c) => document.querySelector('.chat-panes .web:not(.off) webview').executeJavaScript(c), code);
+    const notes = () => page.evaluate(async () => (await import('./store.mjs')).S.user.chatNotes.map((n) => [n.title, n.body, !!n.done]));
+    await page.keyboard.press('t');
+    await page.waitForSelector('.t-list .row');
+    await page.locator('.t-notes .empty', { hasText: 'Nobody is waiting' }).waitFor();
+    await page.evaluate(async (url) => (await import('./testers.mjs')).openConversation({ platform: 'web', url }), `${base}/chat`);
+    // the page is told it may notify
+    await page.locator('.chat-panes .web-url', { hasText: 'permission granted granted' }).waitFor();
+    await inPage(`raise('Priya Raman', 'Are you free at 3?', 'dm-priya')`);
+    await page.locator('.t-notes .note', { hasText: 'Are you free at 3?' }).waitFor();
+    await inPage(`raise('Priya Raman', 'Actually make it 4', 'dm-priya')`); // same tag: replaces
+    await page.locator('.t-notes .note', { hasText: 'Actually make it 4' }).waitFor();
+    await inPage(`raise('Build bot', 'Nightly is green', '')`);
+    await page.locator('.t-notes .note', { hasText: 'Nightly is green' }).waitFor();
+    assert.deepStrictEqual(await notes(), [['Build bot', 'Nightly is green', false], ['Priya Raman', 'Actually make it 4', false]]);
+    assert.equal(await page.locator('.t-notes-h .n').textContent(), '2');
+    await shot('testers-notes');
+    // other tabs show that something is waiting
+    await page.click('.nav >> text=Focus');
+    assert.equal(await page.locator('.nav .note-dot').count(), 1);
+    await page.click('.nav >> text=Testers');
+    // clicking a note clicks the notification inside its page, which opens the thread; the note is archived
+    await page.locator('.t-notes .note', { hasText: 'Priya Raman' }).click();
+    await page.locator('.chat-panes .web-url', { hasText: 'Thread Priya Raman' }).waitFor();
+    assert.deepStrictEqual(await notes(), [['Build bot', 'Nightly is green', false], ['Priya Raman', 'Actually make it 4', true]]);
+    assert.equal(await page.locator('.note-tray summary').textContent(), 'Archived 1');
+    assert.ok(!(await page.locator('.note-tray .note').isVisible()), 'the tray starts collapsed');
+    // archive without opening; nothing waiting clears the dot
+    await page.locator('.t-notes .note', { hasText: 'Build bot' }).locator('[aria-label="Archive without opening"]').click();
+    await page.locator('.t-notes .empty', { hasText: 'Nobody is waiting' }).waitFor();
+    assert.equal(await page.locator('.nav .note-dot').count(), 0);
+    // a note whose page is gone falls back to the person named in it
+    await page.evaluate(async () => (await import('./testers.mjs')).onNote('slack', { id: 'from-an-earlier-session', title: 'New message from Priya Raman', body: 'ping', tag: '' }));
+    await page.locator('.t-notes .note', { hasText: 'New message from Priya Raman' }).click();
+    await page.locator('.t-detail .t-name').waitFor();
+    const t = await page.evaluate(async () => { const x = (await import('./store.mjs')).S.testers; return { active: x.active, url: x.chats.slack?.url, sel: x.rows.find((r) => r.id === x.sel)?.name }; });
+    assert.deepStrictEqual(t, { active: 'slack', url: 'https://app.slack.com/client/T0FERNHILL/D0PRIYA', sel: 'Priya Raman' });
+    // the pane collapses to a rail and comes back; the archive can be emptied
+    await page.click('[aria-label="Collapse notifications"]');
+    await page.waitForSelector('.t-notes.rail');
+    await page.click('.t-notes.rail button');
+    await page.click('.note-tray summary');
+    assert.equal(await page.locator('.note-tray .note').count(), 3);
+    await page.click('.note-tray >> text=Clear archive');
+    assert.deepStrictEqual(await notes(), []);
+    await page.locator('.chat-tabs .chat-tab', { hasText: 'Web' }).click();
+    await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    await page.locator('.chat-tabs .chat-tab:not(.idle)').click();
+    await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    await page.click('[aria-label="Hide browser"]');
+    } finally { server.close(); }
+  });
+
   await step('settings renders', async () => {
     await page.click('.nav >> text=Settings');
     await page.waitForSelector('.settings');

@@ -191,3 +191,33 @@ test('a name is guessed from the page title', () => {
   assert.equal(nameFromTitle('Instagram'), '');
   assert.equal(nameFromTitle(''), '');
 });
+
+test('notes from the browser: newest first, same tag replaces, archive and fallback by name', async () => {
+  const { addNote, archiveNote, clearArchive, linkForNote } = await import('../src/core/notes.mjs');
+  let notes = [];
+  notes = addNote(notes, { id: 'a', platform: 'slack', title: 'Priya', body: 'one', tag: 'D1', ts: 1 });
+  notes = addNote(notes, { id: 'b', platform: 'discord', title: 'marcus', body: 'hi', tag: 'D1', ts: 2 });
+  notes = addNote(notes, { id: 'c', platform: 'slack', title: 'Priya', body: 'two', tag: 'D1', ts: 3 });
+  assert.deepEqual(notes.map((n) => n.id), ['c', 'b']); // c replaced a (same place, same tag); b is elsewhere
+  notes = addNote(notes, { id: 'd', platform: 'slack', title: 'x', body: '', tag: '', ts: 4 });
+  notes = addNote(notes, { id: 'e', platform: 'slack', title: 'y', body: '', tag: '', ts: 5 });
+  assert.deepEqual(notes.map((n) => n.id), ['e', 'd', 'c', 'b']); // no tag: nothing is replaced
+  notes = archiveNote(notes, 'c', 100);
+  notes = archiveNote(notes, 'e', 200);
+  assert.deepEqual(notes.map((n) => [n.id, n.done]), [['d', 0], ['b', 0], ['e', 200], ['c', 100]]);
+  notes = addNote(notes, { id: 'f', platform: 'slack', title: 'Priya', body: 'three', tag: 'D1', ts: 6 });
+  assert.equal(notes.filter((n) => n.done).length, 2); // archived notes are not replaced
+  assert.deepEqual(clearArchive(notes).map((n) => n.id), ['f', 'd', 'b']);
+  let many = [];
+  for (let i = 0; i < 260; i++) many = addNote(many, { id: `n${i}`, platform: 'slack', title: 't', body: '', tag: '', ts: i });
+  assert.equal(many.length, 200);
+
+  const { rows } = await createDemoNotion().notionLoad();
+  const who = (platform, title) => linkForNote({ platform, title }, rows)?.row.name ?? null;
+  assert.equal(who('slack', 'New message from Priya Raman'), 'Priya Raman');
+  assert.equal(who('slack', 'priya (DM)'), 'Priya Raman');
+  assert.equal(who('discord', 'Marcus Oyelaran (#alpha-feedback)'), 'Marcus Oyelaran');
+  assert.equal(who('discord', 'Priya Raman'), null); // no Discord conversation linked to her
+  assert.equal(who('slack', 'Someone else'), null);
+  assert.equal(linkForNote({ platform: 'slack', title: 'Priya Raman' }, rows).link.url, 'https://app.slack.com/client/T0FERNHILL/D0PRIYA');
+});

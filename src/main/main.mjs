@@ -454,9 +454,16 @@ function createWindow() {
   // The in-app browser pane is a <webview>: an ordinary sandboxed web page with no access to the app.
   win.webContents.on('will-attach-webview', (e, prefs, params) => {
     delete prefs.preload;
+    delete prefs.preloadURL;
     prefs.nodeIntegration = false;
     prefs.contextIsolation = true;
     prefs.sandbox = true;
+    if (params.partition === CHAT_PARTITION) {
+      // Messaging pages get one script of ours, which hands their notifications to the Testers tab,
+      // and they keep running at full speed while another tab is in front so that messages still arrive.
+      prefs.preload = path.join(__dirname, 'chat-preload.cjs');
+      prefs.backgroundThrottling = false;
+    }
     if (![WEB_PARTITION, CHAT_PARTITION].includes(params.partition) || (params.src && !isWebUrl(params.src))) e.preventDefault();
   });
   win.webContents.setWindowOpenHandler(({ url }) => { handlers.openExternal(url); return { action: 'deny' }; });
