@@ -754,6 +754,47 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     } finally { server.close(); }
   });
 
+  await step('testers: service tabs load behind the scenes at startup, except those closed by hand', async () => {
+    // (the demo skips this at startup so that it does not load four real sites; here it is run on request)
+    const start = () => page.evaluate(async () => (await import('./testers.mjs')).startChats({ force: true }));
+    const closed = () => page.evaluate(async () => Object.keys((await import('./store.mjs')).S.user.chatClosed).sort());
+    await page.evaluate(async () => { (await import('./store.mjs')).S.user.chatClosed = {}; });
+    await page.click('.nav >> text=Focus');
+    await start();
+    await page.waitForSelector('.chat-stack webview', { state: 'attached' });
+    assert.equal(await page.locator('.chat-stack webview').count(), 4);
+    assert.equal(await page.locator('.testers.off').count(), 1, 'nothing is shown: the Focus view stays in front');
+    assert.ok(await page.locator('section[aria-label="People"]').isVisible());
+    const size = await page.locator('.chat-stack webview').first().evaluate((el) => [el.offsetWidth > 400, el.offsetHeight > 400]);
+    assert.deepStrictEqual(size, [true, true], 'hidden pages are laid out at a real size');
+    // in the tab, all four are already loaded, with the browser still put away
+    await page.click('.nav >> text=Testers');
+    assert.equal(await page.locator('.chat-stack.off').count(), 1);
+    await page.click('.t-browse');
+    assert.equal(await page.locator('.chat-tabs .chat-tab.idle').count(), 0);
+    // closing two by hand: they are left out the next time
+    for (const name of ['Instagram', 'Teams']) {
+      await page.locator('.chat-tabs .chat-tab', { hasText: name }).click();
+      await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    }
+    assert.deepStrictEqual(await closed(), ['instagram', 'teams']);
+    for (const name of ['Discord', 'Slack']) {
+      await page.locator('.chat-tabs .chat-tab', { hasText: name }).click();
+      await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    }
+    await page.evaluate(async () => { const { S } = await import('./store.mjs'); S.user.chatClosed = { instagram: true, teams: true }; });
+    await start();
+    assert.deepStrictEqual(await page.locator('.chat-tabs .chat-tab:not(.idle)').allTextContents(), ['DCDiscord', 'SLSlack']);
+    // opening one again by hand brings it back for next time
+    await page.locator('.chat-tabs .chat-tab', { hasText: 'Teams' }).click();
+    assert.deepStrictEqual(await closed(), ['instagram']);
+    for (const name of ['Discord', 'Slack', 'Teams']) {
+      await page.locator('.chat-tabs .chat-tab', { hasText: name }).click();
+      await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
+    }
+    await page.click('[aria-label="Hide browser"]');
+  });
+
   await step('settings renders', async () => {
     await page.click('.nav >> text=Settings');
     await page.waitForSelector('.settings');

@@ -10,7 +10,7 @@ import { Search } from './search.mjs';
 import { Settings, Welcome, RuleEditor } from './settings.mjs';
 import { Avatar, OrgChip, Swatch } from './avatar.mjs';
 import { WebPane, closeWeb } from './webpane.mjs';
-import { Testers } from './testers.mjs';
+import { Testers, startChats } from './testers.mjs';
 
 const PERIODS = [[1, '24h'], [3, '3d'], [7, '7d'], [30, '30d'], [90, '90d']];
 
@@ -397,6 +397,6 @@ function App() {
     </div>`;
 }
 
-init().then(() => render(html`<${App} />`, document.getElementById('root')), (e) => {
+init().then(() => { render(html`<${App} />`, document.getElementById('root')); startChats(); }, (e) => {
   document.getElementById('root').textContent = `Stillmail failed to start: ${e.message}`;
 });

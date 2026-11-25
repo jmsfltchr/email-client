@@ -103,6 +103,7 @@ export function openConversation(link, event) {
   const { chats, active } = S.testers;
   const cur = chats[link.platform];
   const reuse = cur && cur.url === link.url && active !== link.platform; // already there: just bring it forward
+  if (S.user.chatClosed?.[link.platform]) { delete S.user.chatClosed[link.platform]; saveSoon(); } // in use again: open it at startup
   T({ chats: { ...chats, [link.platform]: reuse ? cur : { url: link.url, n: (cur?.n || 0) + 1, at: link.url, title: '' } }, active: link.platform, browser: true });
   return follow();
 }
@@ -122,8 +123,21 @@ function openBrowser() { if (S.open) closeReader(); T({ browser: true }); follow
 
 function closeChat(platform) {
   const { [platform]: _, ...chats } = S.testers.chats;
+  if (INBOX[platform]) { S.user.chatClosed = { ...S.user.chatClosed, [platform]: true }; saveSoon(); } // stays closed at the next start
   T({ chats, active: null });
   follow();
+}
+
+/**
+ * At startup: load the service tabs behind the scenes, so their notifications arrive without a visit to
+ * this tab. Only once a database is connected, and not the tabs that were last closed by hand.
+ */
+export async function startChats({ force = false } = {}) {
+  if (!S.canEmbed || (S.demo && !force)) return;
+  try { if (!(await api.notionStatus()).connected) return; } catch { return; }
+  const chats = { ...S.testers.chats };
+  for (const p of Object.keys(INBOX)) if (!S.user.chatClosed?.[p] && !chats[p]) chats[p] = { url: INBOX[p], n: 1, at: INBOX[p], title: '' };
+  T({ visited: true, chats }); // "visited" mounts the tab (hidden), which also loads the list of people
 }
 
 // ------------------------------------------------------------------ following the browser
@@ -216,7 +230,7 @@ function Notes() {
         <button class="btn ghost small" onClick=${toggle} title="Collapse" aria-label="Collapse notifications">›</button></div>
       <div class="t-notes-body">
         ${waiting.map(item)}
-        ${waiting.length === 0 && html`<div class="empty">Nobody is waiting. Messages that arrive in a browser tab you have opened are listed here.</div>`}
+        ${waiting.length === 0 && html`<div class="empty">Nobody is waiting. Messages that arrive in an open browser tab are listed here.</div>`}
       </div>
       ${archived.length > 0 && html`
         <details class="note-tray">
