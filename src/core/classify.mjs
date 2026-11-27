@@ -53,6 +53,7 @@ export function defaultState() {
     orgColor: {}, // root domain -> palette index
     chatNotes: [], // notifications from the Testers browser: waiting ones, then archived (see notes.mjs)
     chatNotesOpen: true, // the notifications pane is expanded
+    chatClosed: {}, // platform -> true: its browser tab was closed by hand, so it is not opened at startup
   };
 }
 

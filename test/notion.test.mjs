@@ -221,3 +221,21 @@ test('notes from the browser: newest first, same tag replaces, archive and fallb
   assert.equal(who('slack', 'Someone else'), null);
   assert.equal(linkForNote({ platform: 'slack', title: 'Priya Raman' }, rows).link.url, 'https://app.slack.com/client/T0FERNHILL/D0PRIYA');
 });
+
+test('LinkedIn: recognised, conversations keyed by thread, unread count read from the title', async () => {
+  const { unreadFromTitle } = await import('../src/core/notes.mjs');
+  assert.equal(platformOf('https://www.linkedin.com/messaging/'), 'linkedin');
+  assert.equal(platformOf('https://notlinkedin.com/messaging/'), 'web');
+  assert.deepEqual(conversationOf('https://www.linkedin.com/messaging/thread/2-YWJjZGVm==/?filter=unread'), { platform: 'linkedin', key: 'linkedin:2-YWJjZGVm==', url: 'https://www.linkedin.com/messaging/thread/2-YWJjZGVm==/' });
+  assert.equal(conversationOf('https://www.linkedin.com/messaging/thread/2-YWJjZGVm%3D%3D/').key, 'linkedin:2-YWJjZGVm==');
+  assert.equal(conversationOf('https://www.linkedin.com/messaging/'), null);
+  assert.equal(conversationOf('https://www.linkedin.com/messaging/thread/new/'), null);
+  assert.equal(conversationOf('https://www.linkedin.com/in/someone/'), null);
+  assert.deepEqual(parseLinks(linksToRichText([linkFromInput('linkedin.com/messaging/thread/2-abc/', 'DM')])), [{ platform: 'linkedin', url: 'https://linkedin.com/messaging/thread/2-abc/', label: 'DM' }]);
+  assert.equal(nameFromTitle('(2) Messaging | LinkedIn'), '');
+  assert.equal(nameFromTitle('Sam Okafor | LinkedIn'), 'Sam Okafor');
+  assert.equal(unreadFromTitle('(3) Messaging | LinkedIn'), 3);
+  assert.equal(unreadFromTitle('(99+) Feed | LinkedIn'), 99);
+  assert.equal(unreadFromTitle('Messaging | LinkedIn'), 0);
+  assert.equal(unreadFromTitle(''), 0);
+});

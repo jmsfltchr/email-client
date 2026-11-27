@@ -14,6 +14,7 @@ export const PLATFORMS = {
   discord: { name: 'Discord', short: 'DC', color: '#8c96f7' },
   slack: { name: 'Slack', short: 'SL', color: '#ecb22e' },
   teams: { name: 'Teams', short: 'TM', color: '#9aa2f2' },
+  linkedin: { name: 'LinkedIn', short: 'IN', color: '#5aa7e8' },
   email: { name: 'Email', short: '@', color: '#7fd1b6' },
   web: { name: 'Web', short: '↗', color: '#878a8f' },
 };
@@ -22,6 +23,7 @@ const HOSTS = [
   ['instagram', /(^|\.)(instagram\.com|ig\.me)$/],
   ['discord', /(^|\.)(discord\.com|discordapp\.com|discord\.gg)$/],
   ['slack', /(^|\.)slack\.com$/],
+  ['linkedin', /(^|\.)linkedin\.com$/],
   ['teams', /(^|\.)(teams\.microsoft\.com|teams\.live\.com|teams\.cloud\.microsoft|teams\.microsoft\.us)$/],
 ];
 
@@ -62,6 +64,10 @@ export function conversationOf(url) {
     m = u.pathname.match(/^\/(?:archives|messages)\/([CDG][A-Z0-9]{5,})/);
     return m ? { platform, key: `slack:${m[1]}`, url: `${u.origin}/archives/${m[1]}` } : null;
   }
+  if (platform === 'linkedin') {
+    m = u.pathname.match(/^\/messaging\/thread\/([^/]+)/);
+    return m && m[1] !== 'new' ? { platform, key: `linkedin:${decodeURIComponent(m[1])}`, url: `https://www.linkedin.com/messaging/thread/${m[1]}/` } : null;
+  }
   // Teams: a chat is named by its thread id, or (in "chat with these people" links) by the people.
   let text = u.href;
   try { text = decodeURIComponent(text); } catch { /* keep as is */ }
@@ -71,7 +77,7 @@ export function conversationOf(url) {
   return users ? { platform, key: `teams:users:${users.toLowerCase().split(',').map((s) => s.trim()).sort().join(',')}`, url } : null;
 }
 
-const TITLE_NOISE = /^(instagram|discord|slack|microsoft teams|teams|chats?|inbox|direct|messages?|friends|threads|activity|new message|\d+ new items?)$/i;
+const TITLE_NOISE = /^(linkedin|messaging|feed|instagram|discord|slack|microsoft teams|teams|chats?|inbox|direct|messages?|friends|threads|activity|new message|\d+ new items?)$/i;
 
 /** A guess at who a conversation is with, from the page title ("alice (DM) - Acme - Slack" -> "alice"). */
 export function nameFromTitle(title) {

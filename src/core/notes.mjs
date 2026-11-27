@@ -20,6 +20,12 @@ export function archiveNote(notes, id, now = Date.now()) {
   return trim((notes || []).map((n) => (n.id === id && !n.done ? { ...n, done: now } : n)));
 }
 
+/** The unread count some sites put at the front of the page title: "(3) Messaging | LinkedIn" -> 3. */
+export const unreadFromTitle = (title) => Number(String(title || '').match(/^\s*\((\d+)\+?\)/)?.[1] || 0);
+
+/** Tag of the stand-in note raised when a site's unread count goes up without a notification of its own. */
+export const UNREAD_TAG = 'stillmail:unread-count';
+
 export const clearArchive = (notes) => (notes || []).filter((n) => !n.done);
 
 /**

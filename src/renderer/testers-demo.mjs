@@ -28,7 +28,7 @@ export function createDemoNotion() {
     person('demo-3', 'Dana Whitfield', ['design partner'], 'Onboarded', true, '', [
       ['https://teams.microsoft.com/l/chat/0/0?users=dana@whitfield-law.example', 'chat'], ['dana@whitfield-law.example', '']]),
     person('demo-4', 'Tomás Lindqvist', [], 'Invited', false, 'Met at the meetup; prefers Instagram.', [
-      ['https://www.instagram.com/direct/t/1000002', '']]),
+      ['https://www.instagram.com/direct/t/1000002', ''], ['https://www.linkedin.com/messaging/thread/2-dG9tYXM=/', '']]),
   ];
   let n = 0;
   const copy = (r) => JSON.parse(JSON.stringify(r));

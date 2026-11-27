@@ -327,7 +327,8 @@ a { color: var(--accent); }
 .reading .t-notes { display: none; }
 .note-dot { background: var(--warn); margin-left: 2px; }
 .chat-stack { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
-.chat-stack.off { position: absolute; width: 0; height: 0; overflow: hidden; visibility: hidden; border: 0; }
+/* out of sight but still laid out at full size, so pages loaded behind the scenes render normally */
+.chat-stack.off { position: absolute; inset: 0; z-index: -1; overflow: hidden; visibility: hidden; pointer-events: none; border: 0; }
 .chat-tabs { display: flex; gap: 4px; align-items: center; padding: 6px 10px 0; background: var(--surface); }
 .chat-tab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-bottom: 0; background: none; border-radius: 7px 7px 0 0; padding: 4px 10px; color: var(--ink-2); font-size: 12.5px; }
 .chat-tab.on { background: var(--bg); border-color: var(--line); color: var(--ink); font-weight: 600; }
