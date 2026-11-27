@@ -600,7 +600,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     // closing a page leaves its tab in place, unloaded; hiding the browser gives the list its room back
     await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
     await page.waitForSelector('.chat-empty');
-    assert.equal(await page.locator('.chat-tabs .chat-tab').count(), 4);
+    assert.equal(await page.locator('.chat-tabs .chat-tab').count(), 5);
     await page.locator('.chat-tabs .chat-tab:not(.idle)').click();
     await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
     assert.equal(await page.locator('.chat-stack webview').count(), 0);
@@ -627,13 +627,13 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     // the browser opens with a tab per service and nothing loaded
     await page.click('.t-browse');
     await page.waitForSelector('.chat-empty');
-    assert.deepStrictEqual(await page.locator('.chat-tabs .chat-tab.idle').allTextContents(), ['IGInstagram', 'DCDiscord', 'SLSlack', 'TMTeams']);
+    assert.deepStrictEqual(await page.locator('.chat-tabs .chat-tab.idle').allTextContents(), ['IGInstagram', 'DCDiscord', 'SLSlack', 'TMTeams', 'INLinkedIn']);
     assert.equal(await page.locator('.chat-stack webview').count(), 0);
     await shot('testers-browser');
     await page.locator('.chat-tabs .chat-tab', { hasText: 'Discord' }).click();
     await page.waitForSelector('.chat-stack webview');
     assert.equal(await page.locator('.chat-stack webview').count(), 1);
-    assert.equal(await page.locator('.chat-tabs .chat-tab.idle').count(), 3);
+    assert.equal(await page.locator('.chat-tabs .chat-tab.idle').count(), 4);
     assert.equal((await state()).active, 'discord');
     assert.equal(await page.locator('.t-unlinked').count(), 0);
     // moving to a linked conversation (even a message inside it) opens its person
@@ -681,7 +681,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     // closing a page leaves its tab in place, unloaded; hiding the browser gives the list its room back
     await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
     await page.waitForSelector('.chat-empty');
-    assert.equal(await page.locator('.chat-tabs .chat-tab').count(), 4);
+    assert.equal(await page.locator('.chat-tabs .chat-tab').count(), 5);
     await page.locator('.chat-tabs .chat-tab:not(.idle)').click();
     await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
     assert.equal(await page.locator('.chat-stack webview').count(), 0);
@@ -762,7 +762,7 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
     await page.click('.nav >> text=Focus');
     await start();
     await page.waitForSelector('.chat-stack webview', { state: 'attached' });
-    assert.equal(await page.locator('.chat-stack webview').count(), 4);
+    assert.equal(await page.locator('.chat-stack webview').count(), 5);
     assert.equal(await page.locator('.testers.off').count(), 1, 'nothing is shown: the Focus view stays in front');
     assert.ok(await page.locator('section[aria-label="People"]').isVisible());
     const size = await page.locator('.chat-stack webview').first().evaluate((el) => [el.offsetWidth > 400, el.offsetHeight > 400]);
@@ -778,17 +778,38 @@ const step = async (name, fn) => { try { await fn(); console.log('ok  ', name); 
       await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
     }
     assert.deepStrictEqual(await closed(), ['instagram', 'teams']);
-    for (const name of ['Discord', 'Slack']) {
+    for (const name of ['Discord', 'Slack', 'LinkedIn']) {
       await page.locator('.chat-tabs .chat-tab', { hasText: name }).click();
       await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
     }
     await page.evaluate(async () => { const { S } = await import('./store.mjs'); S.user.chatClosed = { instagram: true, teams: true }; });
     await start();
-    assert.deepStrictEqual(await page.locator('.chat-tabs .chat-tab:not(.idle)').allTextContents(), ['DCDiscord', 'SLSlack']);
+    assert.deepStrictEqual(await page.locator('.chat-tabs .chat-tab:not(.idle)').allTextContents(), ['DCDiscord', 'SLSlack', 'INLinkedIn']);
+    // LinkedIn: a conversation address finds its person, and a rising unread count in the title stands in for a notification
+    const land = (url, title) => page.evaluate(async ([u, t]) => (await import('./testers.mjs')).onLocation('linkedin', { url: u, title: t }), [url, title]);
+    const waiting = () => page.evaluate(async () => (await import('./store.mjs')).S.user.chatNotes.filter((n) => !n.done).map((n) => [n.platform, n.title, n.body]));
+    await page.locator('.chat-tabs .chat-tab', { hasText: 'LinkedIn' }).click();
+    await land('https://www.linkedin.com/messaging/thread/2-dG9tYXM=/', '(2) Messaging | LinkedIn');
+    await page.locator('.t-list .row.sel', { hasText: 'Tomás Lindqvist' }).waitFor();
+    assert.deepStrictEqual(await waiting(), [], 'the count already there at first sight is not news');
+    await land('https://www.linkedin.com/feed/', '(3) Feed | LinkedIn');
+    assert.deepStrictEqual(await waiting(), [['linkedin', 'New on LinkedIn', '3 unread']]);
+    await land('https://www.linkedin.com/feed/', '(4) Feed | LinkedIn');
+    assert.deepStrictEqual(await waiting(), [['linkedin', 'New on LinkedIn', '4 unread']], 'one stand-in, kept up to date');
+    await page.locator('.t-notes .note', { hasText: 'New on LinkedIn' }).click();
+    assert.equal(await page.evaluate(async () => (await import('./store.mjs')).S.testers.chats.linkedin.url), 'https://www.linkedin.com/messaging/');
+    // once the page raises notifications of its own, the stand-in is dropped and not raised again
+    await land('https://www.linkedin.com/messaging/', '(5) Messaging | LinkedIn');
+    await page.evaluate(async () => (await import('./testers.mjs')).onNote('linkedin', { id: 'real-1', title: 'Tomás Lindqvist', body: 'Hej!', tag: '' }));
+    await land('https://www.linkedin.com/messaging/', '(6) Messaging | LinkedIn');
+    assert.deepStrictEqual(await waiting(), [['linkedin', 'Tomás Lindqvist', 'Hej!']]);
+    await page.locator('.t-notes .note [aria-label="Archive without opening"]').click();
+    await page.click('.note-tray summary');
+    await page.click('.note-tray >> text=Clear archive');
     // opening one again by hand brings it back for next time
     await page.locator('.chat-tabs .chat-tab', { hasText: 'Teams' }).click();
     assert.deepStrictEqual(await closed(), ['instagram']);
-    for (const name of ['Discord', 'Slack', 'Teams']) {
+    for (const name of ['Discord', 'Slack', 'Teams', 'LinkedIn']) {
       await page.locator('.chat-tabs .chat-tab', { hasText: name }).click();
       await page.locator('.chat-panes .web:not(.off) [aria-label^="Close"]').click();
     }

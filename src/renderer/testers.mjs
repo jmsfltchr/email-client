@@ -6,7 +6,7 @@ import { S, api, set, toast, openMessage, closeReader, notify, saveSoon } from '
 import { newDraft } from './compose.mjs';
 import { Browser } from './webpane.mjs';
 import { PLATFORMS, linkFromInput, conversationOf, nameFromTitle } from '../core/notion.mjs';
-import { addNote, archiveNote, clearArchive, linkForNote } from '../core/notes.mjs';
+import { addNote, archiveNote, clearArchive, linkForNote, unreadFromTitle, UNREAD_TAG } from '../core/notes.mjs';
 
 const CHAT_PARTITION = 'persist:stillmail-chat'; // sign-ins for the messaging sites; separate from links opened from email
 const NOTION_COLORS = { default: '#878a8f', gray: '#9a9da3', brown: '#b98f6f', orange: '#e79a4f', yellow: '#e3c24f', green: '#6fc79a', blue: '#6aa8ee', purple: '#a98be6', pink: '#e68bc0', red: '#ec7a72' };
@@ -108,7 +108,7 @@ export function openConversation(link, event) {
   return follow();
 }
 
-const INBOX = { instagram: 'https://www.instagram.com/direct/inbox/', discord: 'https://discord.com/channels/@me', slack: 'https://app.slack.com/client', teams: 'https://teams.microsoft.com/v2/' };
+const INBOX = { instagram: 'https://www.instagram.com/direct/inbox/', discord: 'https://discord.com/channels/@me', slack: 'https://app.slack.com/client', teams: 'https://teams.microsoft.com/v2/', linkedin: 'https://www.linkedin.com/messaging/' };
 
 /** Open a platform's inbox (or return to its pane, wherever it was left). */
 function openInbox(platform, event) {
@@ -162,6 +162,22 @@ export function onLocation(platform, { url, title }) {
   if (!chat || (chat.at === url && chat.title === title)) return;
   T({ chats: { ...S.testers.chats, [platform]: { ...chat, at: url, title } } });
   if (platform === S.testers.active) follow();
+  watchUnread(platform, title);
+}
+
+// LinkedIn may not raise a desktop notification from the page for a new message, but it does put its unread
+// count at the front of the page title. When that count goes up and the page has never raised a notification
+// of its own, a stand-in note is added; it cannot say who wrote, and opens the LinkedIn inbox.
+const COUNTED = { linkedin: true };
+const unread = {}; // platform -> the last count seen in its title
+const notifies = {}; // platform -> true once its page has raised a real notification this session
+function watchUnread(platform, title) {
+  if (!COUNTED[platform] || !title) return;
+  const n = unreadFromTitle(title);
+  const before = unread[platform];
+  unread[platform] = n;
+  if (before === undefined || n <= before || notifies[platform]) return;
+  onNote(platform, { id: `unread-${platform}-${Date.now()}`, title: `New on ${PLATFORMS[platform].name}`, body: `${n} unread`, tag: UNREAD_TAG });
 }
 
 const pick = (id) => T({ sel: id, dismissed: S.testers.here?.key ?? null });
@@ -175,7 +191,13 @@ const setNotes = (notes) => { S.user.chatNotes = notes; saveSoon(); notify(); };
 export function onNote(platform, raw) {
   if (!raw || !raw.id || !PLATFORMS[platform]) return;
   const note = { id: String(raw.id), platform, title: String(raw.title || '').trim() || PLATFORMS[platform].name, body: String(raw.body || '').trim(), tag: String(raw.tag || ''), ts: Date.now() };
-  setNotes(addNote(S.user.chatNotes, note));
+  let notes = S.user.chatNotes;
+  if (note.tag !== UNREAD_TAG) {
+    // a real notification: the stand-in for this service is no longer needed
+    notifies[platform] = true;
+    notes = (notes || []).filter((n) => n.done || n.platform !== platform || n.tag !== UNREAD_TAG);
+  }
+  setNotes(addNote(notes, note));
   // Away from the Testers tab (or the app), say so the way new mail does.
   if (!S.user.settings.notify || typeof Notification === 'undefined' || (document.hasFocus() && S.view === 'testers')) return;
   try {
@@ -190,6 +212,7 @@ export async function openNote(note) {
   if (S.view !== 'testers') set({ view: 'testers' });
   if (!S.canEmbed) return;
   if (S.open) closeReader();
+  if (note.tag === UNREAD_TAG) { openConversation({ platform: note.platform, url: INBOX[note.platform] }); return; }
   const loaded = !!S.testers.chats[note.platform];
   if (loaded) {
     showChat(note.platform);
@@ -324,7 +347,7 @@ function People() {
         <span class="hint">${rows.length} ${rows.length === 1 ? 'person' : 'people'} in <a href=${status.url} onClick=${(e) => { e.preventDefault(); if (status.url) api.openExternal(status.url); }}>${status.title}</a></span>
         <button class="btn small" disabled=${loading} onClick=${() => loadTesters()} title="Fetch the latest from Notion">${loading ? 'Loading…' : 'Refresh'}</button>
         ${!S.demo && html`<button class="btn small" onClick=${() => T({ connecting: true })}>Connection…</button>`}
-        ${!S.testers.browser && S.canEmbed && html`<button class="btn small primary t-browse" onClick=${openBrowser} title="Open Instagram, Discord, Slack or Teams beside the list and work from there">Open browser</button>`}
+        ${!S.testers.browser && S.canEmbed && html`<button class="btn small primary t-browse" onClick=${openBrowser} title="Open Instagram, Discord, Slack, Teams or LinkedIn beside the list and work from there">Open browser</button>`}
       </div>
       ${error && html`<div class="banner t-error"><span>${error}</span><button onClick=${() => loadTesters()}>Try again</button></div>`}
       <div class="t-tools">
@@ -395,7 +418,7 @@ function Links({ row }) {
           <${Badge} platform=${S.testers.here.platform} /> Link the open ${PLATFORMS[S.testers.here.platform].name} conversation</button>`}
       <${LinkEditor} key=${`new-${row.id}`} onSave=${(l) => setLinks([...row.links, l])} />
       <details class="t-help"><summary>Where do I find a conversation's link?</summary>
-        <p><b>Slack</b>: right-click the conversation → Copy → Copy link. <b>Teams</b>: ••• next to the chat → Copy link. <b>Discord</b> and <b>Instagram</b>: open the conversation at discord.com or instagram.com/direct in a browser and copy the address. The first time you open each one here you sign in once; it stays signed in.</p>
+        <p><b>Slack</b>: right-click the conversation → Copy → Copy link. <b>Teams</b>: ••• next to the chat → Copy link. <b>Discord</b>, <b>Instagram</b> and <b>LinkedIn</b>: open the conversation (discord.com, instagram.com/direct, linkedin.com/messaging) and copy the address. The first time you open each one here you sign in once; it stays signed in.</p>
       </details>
     </div>`;
 }

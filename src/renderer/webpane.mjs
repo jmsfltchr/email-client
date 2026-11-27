@@ -53,7 +53,8 @@ export function Browser({ url, n, partition, onClose, onLocation, onMessage, onV
   // Every link click navigates the same pane.
   useEffect(() => {
     setSt((s) => ({ ...s, url: web.url, title: '', loading: true, error: null }));
-    view.current.src = web.url;
+    // A load that is replaced or fails is reported by the page's own events; loadURL's rejection adds nothing.
+    try { view.current.loadURL(web.url).catch(() => {}); } catch { view.current.src = web.url; /* not attached yet */ }
   }, [web.n]);
 
   // Tell the owner where the page is now (it moves as links are followed inside it).
